@@ -1,154 +1,161 @@
-import {
-    InteractionType,
-    InteractionResponseType,
-    InteractionResponseFlags,
-    MessageComponentTypes,
-    ButtonStyleTypes,
-  } from 'discord-interactions';
+const { JsonDatabase } = require('brackets-json-db');
+const { BracketsManager } = require('brackets-manager');
+const { EmbedBuilder } = require('discord.js');
+const { models } = require('../models');
 
-import { DiscordRequest, BotAnswer } from './utils.js';  
-  
-export async function InitTournament(res, guild_id){
-      
-      const globalEndpoint = `guilds/${guild_id}/channels`;
-      
-      const channelGroupParams = {
-          name : 'Nouveau tournoi',
-          type : 4,
-          position: 999
-      }
-      const channelParams = [{
-          name : 'Lobby',
-          type : 0,
-          position : 0
-      },{
-          name : 'Participants / Équipe',
-          type : 0,
-          position : 1
-      },{
-          name : 'Score',
-          type : 0,
-          position : 2
-      },{
-          name : 'Administration',
-          type : 0,
-          position : 3
-      }]
-  
-      try {
-          
-          // Send HTTP request with bot token
-          const result = await DiscordRequest(globalEndpoint, {
-            method: 'POST',
-            body: channelGroupParams,
+const fs = require('fs');
+
+const storage = new JsonDatabase();
+const manager = new BracketsManager(storage);
+
+// Create an elimination stage for tournament `3`.
+
+
+async function updateTournament() {
+  await manager.update.match({
+    id: 0, // First match of winner bracket (round 1)
+    opponent1: { score: 16, result: 'win' },
+    opponent2: { score: 12 },
+  });
+}
+
+async function addParticipant(user_id, name, tournament) {
+  await models.Participants.create({ user_id: user_id, name: name, tournamentId: parseInt(tournament) })
+}
+
+async function removeParticipant(user_id, tournament) {
+  await models.Participants.destroy({ where: { user_id: user_id } })
+}
+
+async function userRegistrationforTournament(interaction) {
+  const command = interaction.customId.replace('inscription_', '');
+  if (command.startsWith('confirm_')) {
+    const tournament_id = command.replace('confirm_', '');
+    addParticipant(interaction.user.id, interaction.user.username, tournament_id).then(
+      showRegisteredUsers(interaction, tournament_id)
+    );
+
+    await interaction.reply({ content: `Joueur ${interaction.user.username} : Enregistré`, ephemeral: true });
+  } else if (command.startsWith('cancel_')) {
+    const tournament_id = command.replace('cancel_', '');
+    removeParticipant(interaction.user.id, tournament_id);
+    await interaction.reply({ content: `Joueur ${interaction.user.username} : inscription annulé`, ephemeral: true });
+  }
+}
+
+async function showRegisteredUsers(interaction, tournament_id) {
+
+  const Tournament = await models.Tournaments.findOne({ where: { id: tournament_id } });
+  let Channels = JSON.parse(Tournament.channels)
+  let registeredChannel = Channels.filter(data => data.name === 'registeredChannel')[0];
+  let categoryChannel = Channels.filter(data => data.name === 'groupChannel');
+
+  const participants = await models.Participants.findAll({ where: { tournamentId: tournament_id } })
+  console.log(participants)
+
+  const registeredChannelObject = interaction.client.channels.cache.get(registeredChannel.id);
+
+  const messages = await registeredChannelObject.messages.fetch()
+  registeredChannelObject.bulkDelete(messages)
+
+  const ParticipantsEmbed = new EmbedBuilder()
+    .setColor(0x0099FF)
+    .setTitle('Liste des participants')
+
+  participants.map(data => ParticipantsEmbed.addFields({ name: data.dataValues.name, value: data.dataValues.name, inline: true }))
+
+  //Charger la liste des participants pour afficher/Mettre à jour
+  const messageInscription = await registeredChannelObject.send({ embeds: [ParticipantsEmbed] });
+
+}
+
+
+
+const Tournaments = {
+
+  randomizeTeams: async function(interaction) {
+    const tournament_id = interaction.customId.replace('shuffle_teams_', '');
+
+    const tournament = await models.Participants.findOne({ where: { tournamentId: tournament_id } })[0]
+    const participants = await models.Participants.findAll({ where: { tournamentId: tournament_id } })
+    if (participants.length % tournament.teamSize) { // 5 = teamSize
+      console.log(`Il reste : ${participants.length % 5}`)
+    } else {
+      console.log('Good')
+      const shuffledParticipants = participants.map(value => ({ value: value.dataValues.name, sort: Math.random() }))
+        .sort((a, b) => a.sort - b.sort)
+        .map(({ value }) => value)
+
+
+      for (let i = 0; i < shuffledParticipants.length; i += 5) {// 5 = teamSize
+        const teamData = shuffledParticipants.slice(i, i + 5);// 5 = teamSize
+        const team = await models.Teams.create({
+          name: `Équipe ${i + 1}`,
+          tournamentId: tournament_id
+        })
+        teamData.forEach(async player => {
+
+          await models.Participants.update({
+            teamId: team.id,
+          }, {
+            where: {
+              name: player,
+            },
           });
-          let groupResult = await result.json()
-          channelParams.map( async params => {
-              params.parent_id = groupResult.id;
-              const channelsResult = await DiscordRequest(globalEndpoint, {
-                  method: 'POST',
-                  body: params,
-              });
-  
-              let channel = await channelsResult.json()
-              
-              
-              if(params.name == 'Administration'){
-                  createAdministrationMessage(channel.id)
-              }else if(params.name == 'Participants / Équipe'){
-                  createUsersTeamsMessage(channel.id)
-              }
-             
-          }) 
-          
-          const message = [
-              {
-                  title: `Bravo ! Le tournoi est créé`,
-                  description: `Tu peux te rendre dans la section administration pour gérer le tournoi
-                  Lorsque tu seras prêt, tu peux lancer le check-in pourque les joueurs puissent s'inscrire`,
-              }
-          ]
-  
-          BotAnswer(res, message)
-          
-        } catch (err) {
-          console.error('Error installing commands: ', err);
-        }
-}
-  
+        })
 
-export async function createAdministrationMessage(channel_id){
-    const messageEndpoint = `/channels/${channel_id}/messages`;
-    const message = await DiscordRequest(messageEndpoint, {
-        method: 'POST',
-        body: {
-            content : `
-                Ceci est un est avec 
-                plusieur ligne de code 
-                et des retour à la ligne 
-                `,
-            components:[{
-                type : 1,
-                components:[   
-                    {
-                        type : MessageComponentTypes.BUTTON,
-                        style : 2,
-                        label : 'Démarrer le check-in',
-                        custom_id: "check_in-button"
-                    },
-                    {
-                        type : MessageComponentTypes.BUTTON,
-                        style : 1,
-                        label : 'Démarrer le Tournoi',
-                        disabled: true,
-                        custom_id: "start-button"
-                    },
-                    {
-                        type : MessageComponentTypes.BUTTON,
-                        style : 3,
-                        label : 'Ajouter un score',
-                        disabled: true,
-                        custom_id: "score-button"
-                    },
-                    {
-                        type : MessageComponentTypes.BUTTON,
-                        style : 4,
-                        label : 'Supprimer le tournoi',
-                        custom_id: "delete-button"
-                        //emoji : '🗑️'
-                    },
-                ] 
-            }]
-        },
-    });
+      }
+      console.log(interaction)
+      await interaction.reply({ content: 'Équipes créées, Mise à jour du tableau des participants', ephemeral: true });
+    }
+  },
+  startTournament: async function(interaction) {
+    const tournament_id = interaction.customId.replace('start_', '');
+    const Tournament = await models.Tournaments.findOne({ where: { id: tournament_id } })
+    const Channels = JSON.parse(Tournament.channels)
+    const scoreChannel = Channels.filter(data => data.name === 'scoreChannel')[0];
+    const scoreChannelObject = interaction.client.channels.cache.get(scoreChannel.id);
+
+    const webhooks = await scoreChannelObject.fetchWebhooks();
+    console.log(webhooks)
+    const teams = await models.Teams.findAll({
+      where: {
+        tournamentId: tournament_id
+      }
+    })
+    // console.log(teams.map(team => team.name))
+    /*await manager.create({
+      tournamentId: 20,
+      name: 'Elimination stage',
+      type: 'single_elimination',
+      seeding: teams.map(team => team.name),
+      settings: { consolationFinal: true },
+    });*/
+    const bracket = await manager.get.tournamentData(tournament_id)
+    const currentStage = await manager.get.currentStage(tournament_id);
+    const currentRound = await manager.get.currentRound(currentStage.id);
+
+    const rawData = fs.readFileSync('db.json');
+    const managerDB = JSON.parse(rawData);
+    const current_match = managerDB.match.filter(match => match.round_id == currentRound.id)
+
+    current_match.forEach(async match => {
+      const opponent1 = bracket.participant.filter(participant => participant.id == match.opponent1.id)
+      const opponent2 = bracket.participant.filter(participant => participant.id == match.opponent2.id)
+      const thread = await scoreChannelObject.threads.create({
+        name: `${opponent1[0].name} vs ${opponent2[0].name}`,
+        autoArchiveDuration: 60,
+        reason: 'Needed a separate thread for food',
+      });
+      if (thread.joinable) await thread.join();
+      //console.log(thread);
+    })
+    //console.log(current_match)
+  },
+  stopTournament: async function(interaction, tournamentId) {
+    await manager.delete.tournament(tournamentId)
+  }
 }
 
-export async function createUsersTeamsMessage(channel_id){
-    const messageEndpoint = `/channels/${channel_id}/messages`;
-    const message = await DiscordRequest(messageEndpoint, {
-        method: 'POST',
-        body: {
-            content : `
-                Cliquez sur le bouton "s'inscrire" pour participer au tournoi
-                `,
-            components:[{
-                type : 1,
-                components:[   
-                    {
-                        type : MessageComponentTypes.BUTTON,
-                        style : 3,
-                        label : 'S\'inscrire',
-                        custom_id: "participate-register"
-                    },
-                    {
-                        type : MessageComponentTypes.BUTTON,
-                        style : 4,
-                        label : 'Se désinscrire',
-                        disabled: true,
-                        custom_id: "participate-unregister"
-                    },
-                ] 
-            }]
-        },
-    });
-}
+
+module.exports = { userRegistrationforTournament, showRegisteredUsers, addParticipant, Tournaments }
