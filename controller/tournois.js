@@ -1,6 +1,7 @@
 const { JsonDatabase } = require('brackets-json-db');
 const { BracketsManager } = require('brackets-manager');
-const { EmbedBuilder } = require('discord.js');
+const { EmbedBuilder, userMention } = require('discord.js');
+const { TournamentHelpers } = require('./helpers.js');
 const { models } = require('../models');
 
 const fs = require('fs');
@@ -8,154 +9,219 @@ const fs = require('fs');
 const storage = new JsonDatabase();
 const manager = new BracketsManager(storage);
 
-// Create an elimination stage for tournament `3`.
-
-
-async function updateTournament() {
-  await manager.update.match({
-    id: 0, // First match of winner bracket (round 1)
-    opponent1: { score: 16, result: 'win' },
-    opponent2: { score: 12 },
-  });
-}
-
-async function addParticipant(user_id, name, tournament) {
-  await models.Participants.create({ user_id: user_id, name: name, tournamentId: parseInt(tournament) })
-}
-
-async function removeParticipant(user_id, tournament) {
-  await models.Participants.destroy({ where: { user_id: user_id } })
-}
-
-async function userRegistrationforTournament(interaction) {
-  const command = interaction.customId.replace('inscription_', '');
-  if (command.startsWith('confirm_')) {
-    const tournament_id = command.replace('confirm_', '');
-    addParticipant(interaction.user.id, interaction.user.username, tournament_id).then(
-      showRegisteredUsers(interaction, tournament_id)
-    );
-
-    await interaction.reply({ content: `Joueur ${interaction.user.username} : Enregistré`, ephemeral: true });
-  } else if (command.startsWith('cancel_')) {
-    const tournament_id = command.replace('cancel_', '');
-    removeParticipant(interaction.user.id, tournament_id);
-    await interaction.reply({ content: `Joueur ${interaction.user.username} : inscription annulé`, ephemeral: true });
-  }
-}
-
-async function showRegisteredUsers(interaction, tournament_id) {
-
-  const Tournament = await models.Tournaments.findOne({ where: { id: tournament_id } });
-  let Channels = JSON.parse(Tournament.channels)
-  let registeredChannel = Channels.filter(data => data.name === 'registeredChannel')[0];
-  let categoryChannel = Channels.filter(data => data.name === 'groupChannel');
-
-  const participants = await models.Participants.findAll({ where: { tournamentId: tournament_id } })
-  console.log(participants)
-
-  const registeredChannelObject = interaction.client.channels.cache.get(registeredChannel.id);
-
-  const messages = await registeredChannelObject.messages.fetch()
-  registeredChannelObject.bulkDelete(messages)
-
-  const ParticipantsEmbed = new EmbedBuilder()
-    .setColor(0x0099FF)
-    .setTitle('Liste des participants')
-
-  participants.map(data => ParticipantsEmbed.addFields({ name: data.dataValues.name, value: data.dataValues.name, inline: true }))
-
-  //Charger la liste des participants pour afficher/Mettre à jour
-  const messageInscription = await registeredChannelObject.send({ embeds: [ParticipantsEmbed] });
-
-}
-
-
-
 const Tournaments = {
+	
+	randomizeTeams: async function(interaction) {
 
-  randomizeTeams: async function(interaction) {
-    const tournament_id = interaction.customId.replace('shuffle_teams_', '');
+		const tournament_id = interaction.customId.replace('shuffle_teams_', '');
 
-    const tournament = await models.Participants.findOne({ where: { tournamentId: tournament_id } })[0]
-    const participants = await models.Participants.findAll({ where: { tournamentId: tournament_id } })
-    if (participants.length % tournament.teamSize) { // 5 = teamSize
-      console.log(`Il reste : ${participants.length % 5}`)
-    } else {
-      console.log('Good')
-      const shuffledParticipants = participants.map(value => ({ value: value.dataValues.name, sort: Math.random() }))
-        .sort((a, b) => a.sort - b.sort)
-        .map(({ value }) => value)
+		const tournament = await models.Tournaments.findOne({ where: { id: tournament_id } });
+		const Channels = JSON.parse(tournament.channels);
+		const registeredChannel = Channels.filter(data => data.name === 'registeredChannel')[0];
+		const registeredChannelObject = interaction.client.channels.cache.get(registeredChannel.id);
 
-
-      for (let i = 0; i < shuffledParticipants.length; i += 5) {// 5 = teamSize
-        const teamData = shuffledParticipants.slice(i, i + 5);// 5 = teamSize
-        const team = await models.Teams.create({
-          name: `Équipe ${i + 1}`,
-          tournamentId: tournament_id
-        })
-        teamData.forEach(async player => {
-
-          await models.Participants.update({
-            teamId: team.id,
-          }, {
-            where: {
-              name: player,
-            },
-          });
-        })
-
-      }
-      console.log(interaction)
-      await interaction.reply({ content: 'Équipes créées, Mise à jour du tableau des participants', ephemeral: true });
-    }
-  },
-  startTournament: async function(interaction) {
-    const tournament_id = interaction.customId.replace('start_', '');
-    const Tournament = await models.Tournaments.findOne({ where: { id: tournament_id } })
-    const Channels = JSON.parse(Tournament.channels)
-    const scoreChannel = Channels.filter(data => data.name === 'scoreChannel')[0];
-    const scoreChannelObject = interaction.client.channels.cache.get(scoreChannel.id);
-
-    const webhooks = await scoreChannelObject.fetchWebhooks();
-    console.log(webhooks)
-    const teams = await models.Teams.findAll({
-      where: {
-        tournamentId: tournament_id
-      }
-    })
-    // console.log(teams.map(team => team.name))
-    /*await manager.create({
-      tournamentId: 20,
-      name: 'Elimination stage',
-      type: 'single_elimination',
-      seeding: teams.map(team => team.name),
-      settings: { consolationFinal: true },
-    });*/
-    const bracket = await manager.get.tournamentData(tournament_id)
-    const currentStage = await manager.get.currentStage(tournament_id);
-    const currentRound = await manager.get.currentRound(currentStage.id);
-
-    const rawData = fs.readFileSync('db.json');
-    const managerDB = JSON.parse(rawData);
-    const current_match = managerDB.match.filter(match => match.round_id == currentRound.id)
-
-    current_match.forEach(async match => {
-      const opponent1 = bracket.participant.filter(participant => participant.id == match.opponent1.id)
-      const opponent2 = bracket.participant.filter(participant => participant.id == match.opponent2.id)
-      const thread = await scoreChannelObject.threads.create({
-        name: `${opponent1[0].name} vs ${opponent2[0].name}`,
-        autoArchiveDuration: 60,
-        reason: 'Needed a separate thread for food',
-      });
-      if (thread.joinable) await thread.join();
-      //console.log(thread);
-    })
-    //console.log(current_match)
-  },
-  stopTournament: async function(interaction, tournamentId) {
-    await manager.delete.tournament(tournamentId)
-  }
-}
+		const webhooks = await registeredChannelObject.fetchWebhooks();
+		const webhook = webhooks.first();
 
 
-module.exports = { userRegistrationforTournament, showRegisteredUsers, addParticipant, Tournaments }
+		const messages = await registeredChannelObject.messages.fetch();
+
+		if (Array.from(messages.values()).length) {
+			const webhookMessages = messages.find(m => m.webhookId == webhook.id);
+			console.log(webhookMessages);
+			await webhook.deleteMessage(webhookMessages.id);
+		}
+
+
+		let participants = await models.Participants.findAll({ where: { tournamentId: tournament_id } });
+		if (participants.length % tournament.teamsSize) {
+			console.log(`Il reste : ${participants.length % tournament.teamsSize}`);
+			participants = participants.slice(0, participants.length - participants.length % tournament.teamsSize);
+		}
+
+		let teamNum = 1;
+
+		const shuffledParticipants = participants.map(value => ({ value: value, sort: Math.random() }))
+			.sort((a, b) => a.sort - b.sort)
+			.map(({ value }) => value);
+
+		for (let j = 0; j < shuffledParticipants.length; j += 25) {
+			const slicedData = shuffledParticipants.slice(j, j + 25);
+			const ParticipantsEmbed = new EmbedBuilder()
+				.setColor(0x0099FF)
+				.setTitle('Liste des équipes');
+
+			for (let i = 0; i < slicedData.length; i += tournament.teamsSize) {
+
+				const teamData = slicedData.slice(i, i + tournament.teamsSize);
+				const team = await models.Teams.create({
+					name: `Équipe ${teamNum}`,
+					tournamentId: tournament_id,
+				});
+
+				let text = '';
+				await teamData.forEach(async player => {
+					if (player.user_id) {
+						text += `${userMention(player.user_id)}
+								`;
+					}
+					else {
+						text += `${player.name}
+							`;
+					}
+					await models.Participants.update({
+						teamId: team.id,
+					}, {
+						where: {
+							name: player.name,
+						},
+					});
+
+
+				});
+
+				ParticipantsEmbed.addFields({ name: `Équipe ${teamNum}`, value: text });
+				teamNum++;
+			}
+			webhook.send({ embeds : [ParticipantsEmbed] });
+		}
+
+
+		await interaction.reply({ content: 'Équipes créées, Mise à jour du tableau des participants', ephemeral: true });
+
+	},
+	startTournament: async function(interaction) {
+		const tournament_id = parseInt(interaction.customId.replace('start_', ''));
+		const { webhook, Tournament, ChannelObject: ScoreChannel } = await TournamentHelpers.getChannel(interaction, tournament_id, 'scoreChannel');
+		const { ChannelObject: LobbyChannel } = await TournamentHelpers.getChannel(interaction, tournament_id, 'lobbyChannel');
+		if (Tournament) {
+
+			const teams = await models.Teams.findAll({
+				where: {
+					tournamentId: tournament_id,
+				},
+			});
+
+			let tournamentSize = 1;
+
+			while (tournamentSize < teams.length) {
+				tournamentSize *= 2;
+			}
+
+			if (tournamentSize != teams.length) {
+				const rest = tournamentSize - teams.length;
+				for (let i = 0; i < rest; i++) {
+					await teams.push({ name:null });
+				}
+			}
+
+			await manager.create({
+				tournamentId: tournament_id,
+				name: 'Elimination stage',
+				type: 'single_elimination',
+				seeding:  teams.map(team => team.name),
+				settings: {
+					// consolationFinal: true,
+					balanceByes: true,
+				},
+			});
+
+			TournamentHelpers.showMatchThreads(tournament_id, manager, webhook, ScoreChannel);
+			await models.Tournaments.update({ status: 'started' }, { where: { id: tournament_id } });
+			
+			LobbyChannel.send({ content: 'Tournoi démarré ! GL HF ' });
+			// console.log(current_match)
+		}
+		else {
+			await interaction.reply({ content: 'Tournoi déjà démarré', ephemeral: true });
+		}
+
+	},
+	updateTournament: async function(interaction) {
+
+		const [ tournamentId, match_id ] = interaction.customId.replace('score_', '').split('_');
+		const bracket = await manager.get.tournamentData(parseInt(tournamentId));
+
+		// Si le score n'est pas déjà entré, on continue !
+		const scoreSetted = bracket.match.filter(match => match.id == match_id && match.status == 2);
+
+		if (scoreSetted.length) {
+			TournamentHelpers.setMatchScore(interaction, bracket, parseInt(match_id));
+
+			const filter = (_interaction) => _interaction.customId === 'matchScore';
+			interaction.awaitModalSubmit({ filter, time: 15_000 })
+				.then(async _interaction => {
+					// console.log(_interaction);
+
+					const opponents = {
+						1: {
+							name : bracket.participant.filter(participant => participant.id == scoreSetted[0].opponent1.id).name,
+							score : parseInt(_interaction.fields.getTextInputValue('opponent1')),
+						},
+						2: {
+							name : bracket.participant.filter(participant => participant.id == scoreSetted[0].opponent2.id).name,
+							score: parseInt(_interaction.fields.getTextInputValue('opponent2')),
+						},
+					};
+
+					if (opponents['1'].score > opponents['2'].score) {
+						opponents['1'].result = 'win';
+					}
+					else {
+						opponents['2'].result = 'win';
+					}
+
+					await manager.update.match({
+						id:  parseInt(match_id),
+						opponent1: opponents['1'],
+						opponent2: opponents['2'],
+					});
+
+					await _interaction.reply({ content: 'Score mis à jour', ephemeral: true });
+
+					// On check si des matchs sont encore en cours avec le statut 2
+					const bracketupdated = await manager.get.tournamentData(parseInt(tournamentId));
+					const roundEnded = bracketupdated.match.filter(match => match.id == match_id && match.status == 2);
+					console.log(roundEnded);
+
+					// Si aucun match on mets à jour la liste des threads pour les matchs
+					if (!roundEnded.length) {
+						console.log('dernier match du round joué');
+						TournamentHelpers.updateMatchThreads(interaction, tournamentId, manager, opponents);
+						// Si dernier match du tournoi: finir tounroi et afficher vainqueur
+						// Utiliser données de opponents pour afficher le gagnant !
+					}
+
+				})
+				.catch(console.error);
+		}
+		else {
+			await interaction.reply({ content: 'Le score de ce match à déjà été entré !', ephemeral: true });
+		}
+
+
+	},
+	cancelTournament: async function(interaction, tournamentId) {
+		await manager.delete.tournament(tournamentId);
+	},
+	addParticipant: async function(interaction, user_id, name, tournamentId) {
+		const Tournament = await TournamentHelpers.getTournament(tournamentId);
+		console.log(Tournament);
+		const participantCheck = models.Participants.findOne({ where : { user_id: user_id, tournamentId: parseInt(tournamentId) } });
+		if (!participantCheck.length) {
+			await models.Participants.create({ user_id: user_id, name: name, tournamentId: parseInt(tournamentId) });
+			//console.log(interaction)
+			const role = await interaction.member.guild.roles.fetch(Tournament.roleId);
+			await interaction.member.roles.add(role);
+		}
+		else {
+			interaction.reply({ content: 'Vous êtes déjà inscrit au tournoi !', ephemeral: true });
+		}
+	},
+	removeParticipant: async function(user_id, tournament) {
+		await models.Participants.destroy({ where: { user_id: user_id, tournamentId: parseInt(tournament) } });
+	},
+};
+
+
+module.exports = { Tournaments };

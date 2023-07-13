@@ -32,6 +32,12 @@ const Tournaments = sequelize.define('tournaments', {
   },
   channels: {
     type: Sequelize.TEXT,
+  },
+  settings: {
+    type: Sequelize.TEXT,
+  },
+  roleId: {
+    type: Sequelize.BIGINT,
   }
 });
 
@@ -49,7 +55,7 @@ const Participants = sequelize.define('participant', {
     type: Sequelize.STRING,
   },
   user_id: {
-    type: Sequelize.INTEGER,
+    type: Sequelize.BIGINT,
   }
 });
 
