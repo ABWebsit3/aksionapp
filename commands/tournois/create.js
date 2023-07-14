@@ -4,6 +4,7 @@ const { models } = require('./../../models');
 const { Tournaments } = require('./../../controller/tournois');
 const { TournamentHelpers } = require('./../../controller/helpers');
 
+
 const data = new SlashCommandBuilder()
 	.setName('tournoi')
 	.setDescription('Commandes "Tournoi"')
@@ -55,27 +56,44 @@ const execute = async function(interaction) {
 			console.log(channel);
 			await interaction.member.guild.channels.delete(channel.id, 'Delete tournaments channels');
 		});
-	
-		Tournaments.cancelTournament(tournamentId);
-		await models.Tournaments.destroy({ where: { id: tournamentId } });
 
+		Tournaments.cancelTournament(interaction, tournamentId);
 	}
 	else if (interaction.options._subcommand === 'join') {
-		
+
 		const tournamentId = interaction.options._hoistedOptions[0].value;
-		const tournament = await models.Tournaments.findOne({ where: { id: tournamentId, status: 'waiting' } });
+		const Tournament = await TournamentHelpers.getTournament(tournamentId);
 		const { ChannelObject } = await TournamentHelpers.getChannel(interaction, tournamentId, 'registeredChannel');
 
-		if (tournament) {
-			await Tournaments.addParticipant(interaction, interaction.user.id, interaction.user.username, tournamentId);
-			await TournamentHelpers.showRegisteredUsers(interaction, tournamentId);
-			console.log(`User ${interaction.user.username} join tournament`);
-			console.log(ChannelObject);
-			await interaction.reply({ content: `Joueur ${interaction.user.username} inscrit au tournoi : ${tournament.name}
-Ton équipe sera annoncé avant le debut du tournoi : ${channelMention(ChannelObject.id)} `, ephemeral: true });
+		if (Tournament.status == 'signin') {
+			if (Tournament.settings.tournamentType == 'Random teams') {
+				await Tournaments.addParticipant(interaction, interaction.user.id, interaction.user.username, tournamentId);
+				await TournamentHelpers.showRegisteredUsers(interaction, tournamentId);
+				console.log(`User ${interaction.user.username} join tournament`);
+				await interaction.reply({ content: `Joueur ${interaction.user.username} inscrit au tournoi : ${tournament.name} \n\t 
+				Ton équipe sera annoncé avant le debut du tournoi : ${channelMention(ChannelObject.id)} `, ephemeral: true });
+			}
+			else {
+				TournamentHelpers.loadCreateTeamModal(interaction);
+				const filter = (_interaction) => _interaction.customId === 'createTeam';
+				interaction.awaitModalSubmit({ filter, time: 15_000 })
+					.then(_interaction => Tournament.createTeam(_interaction, tournamentId))
+					.catch(console.error);
+			}
+
+
+		}
+		else if (Tournament.status == 'waiting') {
+			await interaction.reply({ content: 'L\'inscription au tournoi n\'est pas ouvert.', ephemeral: true });
+		}
+		else if (Tournament.status == 'checkin') {
+			await interaction.reply({ content: 'Inscription terminé ! Le tournoi va bientôt commencer !', ephemeral: true });
+		}
+		else if (Tournament.status == 'started') {
+			await interaction.reply({ content: 'Inscription terminé ! Le tournoi à déjà commencé !', ephemeral: true });
 		}
 		else {
-			await interaction.reply({ content: 'Inscription terminé ! Le tournoi à déjà commencé !', ephemeral: true });
+			await interaction.reply({ content: 'Erreur inconnu ! Contacter un admin !', ephemeral: true });
 		}
 
 
@@ -145,7 +163,7 @@ const initTournament = async function(interaction) {
 					},
 				],
 			});
-			const adminChannel = await TournamentHelpers.createChannel(interaction, { 
+			const adminChannel = await TournamentHelpers.createChannel(interaction, {
 				name: 'Administration',
 				reason: 'Lobby for players',
 				parent: groupChannel.id,
@@ -154,7 +172,7 @@ const initTournament = async function(interaction) {
 						id: interaction.guild.id,
 						deny: [PermissionsBitField.Flags.ViewChannel],
 					},
-				], 
+				],
 			});
 
 			const channelGroup = [
@@ -182,10 +200,10 @@ const initTournament = async function(interaction) {
 			];
 
 			const settings = {
-				TournamentType : 'Randon teams',
+				TournamentType : 'Random teams',
 				TeamsSizes: '5',
 				ConsolationRound : 'true',
-			}
+			};
 
 			await models.Tournaments.update({
 				guildId: groupChannel.guildId,
@@ -197,12 +215,11 @@ const initTournament = async function(interaction) {
 					id: tournament.id,
 				},
 			});
-			
+
 			TournamentHelpers.showTournamentSettings(interaction, tournament.id);
 			await interaction.editReply({ content: 'Tournoi créé', ephemeral: true });
-			
-			const shuffleButtonContent = 'Cliquez pour mélanger les joueurs et créer les équipes';
-			TournamentHelpers.shuffleButtons(interaction, adminChannel, shuffleButtonContent, tournament.id);
+
+			TournamentHelpers.adminsControlsButtons(interaction, tournament.id);
 		}
 		else {
 			await interaction.editReply({ content: 'Erreur ! La taille des équipe doit être compris entre 1 et 5', ephemeral: true });

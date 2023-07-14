@@ -19,12 +19,13 @@ const TournamentHelpers = {
 	getTournament: async function(tournamentId) {
 		const Tournament = await models.Tournaments.findOne({ where : { id : tournamentId } });
 		return {
-		
+
 			id: Tournament.id,
 			name: Tournament.name,
+			status: Tournament.status,
 			settings : JSON.parse(Tournament.settings),
 			roleId : Tournament.roleId,
-			
+
 		};
 	},
 	/**
@@ -47,28 +48,76 @@ const TournamentHelpers = {
 		return { webhook, ChannelObject, Tournament };
 	},
 
-	shuffleButtons : async function(interaction, adminChannel, content, tournament_id, ...buttons) {
-		const adminChannelObject = interaction.client.channels.cache.get(adminChannel.id);
+	adminsControlsButtons : async function(interaction, tournament_id, status) {
+		const { webhook, Tournament, ChannelObject : AdminChannel } = await this.getChannel(interaction, tournament_id, 'adminChannel', status);
 
-		const shuffleButton = new ButtonBuilder()
+		const messages = await AdminChannel.messages.fetch();
+
+		const messagefiltered = messages.filter(message => message.webhookId == webhook.id).first()
+
+		console.log(messagefiltered);
+
+		/*const shuffleButton = new ButtonBuilder()
 			.setCustomId('shuffle_teams_' + tournament_id)
 			.setLabel('♻')
+			.setStyle(ButtonStyle.Success);*/
+
+		const openSignInButton = new ButtonBuilder()
+			.setCustomId('signin_' + tournament_id)
+			.setLabel('✅ Ouvrir l\'inscription')
+			.setStyle(ButtonStyle.Success);
+
+		const openCheckInButton = new ButtonBuilder()
+			.setCustomId('checkin_' + tournament_id)
+			.setLabel('✍ Ouvrir le Check-in')
 			.setStyle(ButtonStyle.Success);
 
 		const startTournamentButton = new ButtonBuilder()
 			.setCustomId('start_' + tournament_id)
-			.setLabel('Go !')
+			.setLabel('Démarrer le tournoi')
 			.setStyle(ButtonStyle.Success);
 
+		switch (Tournament.status) {
+		case 'waiting':
+			openCheckInButton.setDisabled(true);
+			startTournamentButton.setDisabled(true);
+			break;
+		case 'signin' :
+			openSignInButton.setDisabled(true);
+			startTournamentButton.setDisabled(true);
+			break;
+		case 'checkin' :
+			openCheckInButton.setDisabled(true);
+			openSignInButton.setDisabled(true);
+			break;
+		}
 
 		const row = new ActionRowBuilder()
-			.addComponents([shuffleButton, startTournamentButton]);
+			.addComponents([openSignInButton, openCheckInButton, startTournamentButton]);
 
-		const messageShuffle = await adminChannelObject.send({
-			content: content,
-			components: [row],
-		});
-		return messageShuffle;
+		if( Tournament.status != 'waiting'){
+			const returnButton = new ButtonBuilder()
+				.setCustomId('return_' + tournament_id)
+				.setLabel('⬅ Retour à l\'étape précédente')
+				.setStyle(ButtonStyle.Danger);
+
+			row.addComponents(returnButton);
+		}
+
+		if(messagefiltered){
+			await webhook.editMessage(messagefiltered.id, {
+				content: 'Boutons d\'administration',
+				components: [row],
+			});
+		}
+		else {
+			await webhook.send({
+				content: 'Boutons d\'administration',
+				components: [row],
+			});
+		}
+		
+
 	},
 	loadTournamentModal: async function(interaction) {
 
@@ -98,8 +147,29 @@ const TournamentHelpers = {
 		tournamentSettingsModal.addComponents(firstActionRow, secondActionRow);
 		await interaction.showModal(tournamentSettingsModal);
 	},
+	loadCreateTeamModal: async function(interaction) {
+
+		const createTeamModal = new ModalBuilder()
+			.setCustomId('tournamentSettings')
+			.setTitle('Créer une nouvelle équipe');
+		// Add components to modal
+		// Create the text input components
+		const teamName = new TextInputBuilder()
+			.setCustomId('tournamentName')
+			.setLabel('Nom de l\'équipe')
+			.setStyle(TextInputStyle.Short);
+
+
+		// An action row only holds one text input,
+		// so you need one action row per text input.
+		const firstActionRow = new ActionRowBuilder().addComponents(teamName);
+
+		// Add inputs to the modal
+		createTeamModal.addComponents(firstActionRow);
+		await interaction.showModal(createTeamModal);
+	},
 	showTournamentSettings: async function(interaction, tournamentId) {
-		const { ChannelObject : AdminChannel } = await this.getChannel(interaction, tournamentId, 'adminChannel')
+		const { ChannelObject : AdminChannel } = await this.getChannel(interaction, tournamentId, 'adminChannel');
 		const select = new StringSelectMenuBuilder()
 			.setCustomId('starter')
 			.setPlaceholder('Make a selection!')

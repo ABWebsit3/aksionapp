@@ -43,8 +43,11 @@ module.exports = {
 			}
 		}
 		else if (interaction.isButton()) {
-			if (interaction.customId.startsWith('inscription_')) {
-				userRegistrationforTournament(interaction);
+			if (interaction.customId.startsWith('signin_')) {
+				Tournaments.startSignInTournament(interaction);
+			}
+			if (interaction.customId.startsWith('checkin_')) {
+				Tournaments.startCheckInTournament(interaction);
 			}
 			if (interaction.customId.startsWith('shuffle_teams_')) {
 				Tournaments.randomizeTeams(interaction);

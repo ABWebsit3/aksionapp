@@ -9,8 +9,10 @@ const fs = require('fs');
 const storage = new JsonDatabase();
 const manager = new BracketsManager(storage);
 
+// Tournaments states = waiting - signin - checkin - started - finished(optionnal)
+
 const Tournaments = {
-	
+
 	randomizeTeams: async function(interaction) {
 
 		const tournament_id = interaction.customId.replace('shuffle_teams_', '');
@@ -90,6 +92,24 @@ const Tournaments = {
 		await interaction.reply({ content: 'Équipes créées, Mise à jour du tableau des participants', ephemeral: true });
 
 	},
+	createTeam: async function(interaction, tournamentId) {
+		const { ChannelObject : AdminChannel } = await TournamentHelpers.getChannel(interaction, tournamentId, 'adminChannel');
+		const { Tournament } = await TournamentHelpers.getTournament(tournamentId);
+		const row = new ActionRowBuilder();
+		for (let i = 1; i <= Tournament.settings.teamSize; i++) {
+			const select = new userSelectMenuBuilder()
+				.setCustomId('starter')
+				.setPlaceholder(`Joueur ${i}`);
+
+			row.addComponents(select);
+		}
+
+
+		await AdminChannel.send({
+			content: 'Créer ton équipe : Le premier joueur inscrit sera le capitaine.',
+			components: [row],
+		});
+	},
 	startTournament: async function(interaction) {
 		const tournament_id = parseInt(interaction.customId.replace('start_', ''));
 		const { webhook, Tournament, ChannelObject: ScoreChannel } = await TournamentHelpers.getChannel(interaction, tournament_id, 'scoreChannel');
@@ -128,7 +148,7 @@ const Tournaments = {
 
 			TournamentHelpers.showMatchThreads(tournament_id, manager, webhook, ScoreChannel);
 			await models.Tournaments.update({ status: 'started' }, { where: { id: tournament_id } });
-			
+
 			LobbyChannel.send({ content: 'Tournoi démarré ! GL HF ' });
 			// console.log(current_match)
 		}
@@ -201,25 +221,46 @@ const Tournaments = {
 
 
 	},
-	cancelTournament: async function(interaction, tournamentId) {
-		await manager.delete.tournament(tournamentId);
+	startSignInTournament: async function(interaction) {
+		const tournamentId = interaction.customId.replace('signin_', '');
+		await models.Tournaments.update({ status : 'signin' }, { where : { id : tournamentId } });
+		await TournamentHelpers.adminsControlsButtons(interaction, tournamentId, 'signin');
+		console.log('Tournament status updated : Sign In');
+	},
+	startCheckInTournament: async function(interaction) {
+		const tournamentId = interaction.customId.replace('checkin_', '');
+		await models.Tournaments.update({ status : 'checkin' }, { where : { id : tournamentId } });
+		await TournamentHelpers.adminsControlsButtons(interaction, tournamentId, 'checkin');
+		console.log('Tournament status updated : Check In');
 	},
 	addParticipant: async function(interaction, user_id, name, tournamentId) {
 		const Tournament = await TournamentHelpers.getTournament(tournamentId);
 		console.log(Tournament);
 		const participantCheck = models.Participants.findOne({ where : { user_id: user_id, tournamentId: parseInt(tournamentId) } });
+
+		// Si le joueur n'est pas déjà enregistré
 		if (!participantCheck.length) {
 			await models.Participants.create({ user_id: user_id, name: name, tournamentId: parseInt(tournamentId) });
-			//console.log(interaction)
+			// console.log(interaction)
 			const role = await interaction.member.guild.roles.fetch(Tournament.roleId);
 			await interaction.member.roles.add(role);
 		}
 		else {
 			interaction.reply({ content: 'Vous êtes déjà inscrit au tournoi !', ephemeral: true });
 		}
+
 	},
-	removeParticipant: async function(user_id, tournament) {
-		await models.Participants.destroy({ where: { user_id: user_id, tournamentId: parseInt(tournament) } });
+	removeParticipant: async function(interaction, user_id, tournamentId) {
+		const Tournament = await TournamentHelpers.getTournament(tournamentId);
+		const role = await interaction.member.guild.roles.fetch(Tournament.roleId);
+		await interaction.member.roles.delete(role);
+		await models.Participants.destroy({ where: { user_id: user_id, tournamentId: parseInt(tournamentId) } });
+	},
+	cancelTournament: async function(interaction, tournamentId) {
+		await models.Tournaments.destroy({ where: { id: parseInt(tournamentId) } });
+		await manager.delete.tournament(tournamentId);
+		await interaction.reply('Tournoi supprimé.');
+
 	},
 };
 
