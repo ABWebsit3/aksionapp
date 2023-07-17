@@ -19,7 +19,7 @@ module.exports = {
 			const [tournamentId, numberOfUsers] = interaction.options._hoistedOptions;
 			const maxValue = numberOfUsers.value;
 			for (let i = 0; maxValue > i ; i++) {
-				await Tournaments.addParticipant(interaction, '', `Player ${i + 1}`, tournamentId.value);
+				await Tournaments.addParticipant(interaction, '', `Player ${i + 1}`, tournamentId.value, true);
 			}
 			await TournamentHelpers.showRegisteredUsers(interaction, tournamentId.value);
 			await interaction.reply({ content: `Faux participants créés, Nombre de participant: ${maxValue}`, ephemeral: true });

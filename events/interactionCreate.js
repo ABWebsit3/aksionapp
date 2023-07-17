@@ -4,7 +4,7 @@ const { userRegistrationforTournament, Tournaments } = require('../controller/to
 module.exports = {
 	name: Events.InteractionCreate,
 	async execute(interaction) {
-
+		console.log(interaction)
 		if (interaction.isChatInputCommand()) {
 			const command = interaction.client.commands.get(interaction.commandName);
 
@@ -57,6 +57,9 @@ module.exports = {
 			}
      		if (interaction.customId.startsWith('score_')) {
 				Tournaments.updateTournament(interaction);
+			}
+			if (interaction.customId.startsWith('return_')) {
+				Tournaments.adminReturnStep(interaction);
 			}
 		}
 	},

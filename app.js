@@ -7,7 +7,7 @@ const { Client, Collection, Events, GatewayIntentBits, Partials } = require('dis
 
 // Create a new client instance
 const client = new Client({
-	intents: [GatewayIntentBits.Guilds, GatewayIntentBits.GuildMessages, GatewayIntentBits.GuildMessageReactions],
+	intents: [GatewayIntentBits.Guilds, GatewayIntentBits.GuildMessages, GatewayIntentBits.GuildMessageReactions, GatewayIntentBits.DirectMessages, GatewayIntentBits.MessageContent],
 	partials: [Partials.Message, Partials.Channel, Partials.Reaction],
 });
 

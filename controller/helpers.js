@@ -7,10 +7,10 @@ const TournamentHelpers = {
 		const channel = await interaction.member.guild.channels.create(options);
 
 		if (typeof options.type == 'undefined') {
-			channel.createWebhook({
+			await channel.createWebhook({
 				name: 'Aksion',
 				avatar: 'assets/avatar.png',
-			}).then(console.log)
+			}).then(/*console.log*/)
 				.catch(console.error);
 		}
 
@@ -40,8 +40,7 @@ const TournamentHelpers = {
 		const Tournament = await models.Tournaments.findOne({ where: { id: tournamentId, status : status } });
 		const Channels = JSON.parse(Tournament.channels);
 		const Channel = Channels.filter(data => data.name === channel)[0];
-		const ChannelObject = interaction.client.channels.cache.get(Channel.id);
-
+		const ChannelObject = await interaction.client.channels.cache.get(Channel.id);
 		const webhooks = await ChannelObject.fetchWebhooks();
 		const webhook = webhooks.first();
 
@@ -50,14 +49,41 @@ const TournamentHelpers = {
 
 	adminsControlsButtons : async function(interaction, tournament_id, status) {
 		const { webhook, Tournament, ChannelObject : AdminChannel } = await this.getChannel(interaction, tournament_id, 'adminChannel', status);
-
+		const TournamentSettings = JSON.parse(Tournament.settings);
 		const messages = await AdminChannel.messages.fetch();
 
-		const messagefiltered = messages.filter(message => message.webhookId == webhook.id).first()
+		console.log(TournamentSettings)
+		const messagefiltered = messages.filter(message => message.webhookId == webhook.id).first();
 
-		console.log(messagefiltered);
+		const adminEmbed = {
+			color: 0x0099ff,
+			title: 'Panneau d\'administration',
+			fields: [
+				{
+					name: 'Nom du tournoi',
+					value: Tournament.name,
+				},
+				{
+					name: 'Type de tournoi',
+					value: TournamentSettings.TournamentType.name,
 
-		/*const shuffleButton = new ButtonBuilder()
+				},
+				{
+					name: 'Taille des équipes',
+					value: TournamentSettings.TeamsSizes,
+				},
+				{
+					name: 'Round de consolation',
+					value: TournamentSettings.ConsolationRound ? 'Oui' : 'Non',
+				},
+				{
+					name: 'État du tournoi',
+					value: Tournament.status.charAt(0).toUpperCase() + Tournament.status.slice(1),
+				},
+			],
+		};
+
+		/* const shuffleButton = new ButtonBuilder()
 			.setCustomId('shuffle_teams_' + tournament_id)
 			.setLabel('♻')
 			.setStyle(ButtonStyle.Success);*/
@@ -95,7 +121,7 @@ const TournamentHelpers = {
 		const row = new ActionRowBuilder()
 			.addComponents([openSignInButton, openCheckInButton, startTournamentButton]);
 
-		if( Tournament.status != 'waiting'){
+		if (Tournament.status != 'waiting' || Tournament.status != 'signin') {
 			const returnButton = new ButtonBuilder()
 				.setCustomId('return_' + tournament_id)
 				.setLabel('⬅ Retour à l\'étape précédente')
@@ -104,19 +130,19 @@ const TournamentHelpers = {
 			row.addComponents(returnButton);
 		}
 
-		if(messagefiltered){
+		if (messagefiltered) {
 			await webhook.editMessage(messagefiltered.id, {
-				content: 'Boutons d\'administration',
+				embeds: [adminEmbed],
 				components: [row],
 			});
 		}
 		else {
 			await webhook.send({
-				content: 'Boutons d\'administration',
+				embeds: [adminEmbed],
 				components: [row],
 			});
 		}
-		
+
 
 	},
 	loadTournamentModal: async function(interaction) {
@@ -167,30 +193,6 @@ const TournamentHelpers = {
 		// Add inputs to the modal
 		createTeamModal.addComponents(firstActionRow);
 		await interaction.showModal(createTeamModal);
-	},
-	showTournamentSettings: async function(interaction, tournamentId) {
-		const { ChannelObject : AdminChannel } = await this.getChannel(interaction, tournamentId, 'adminChannel');
-		const select = new StringSelectMenuBuilder()
-			.setCustomId('starter')
-			.setPlaceholder('Make a selection!')
-			.addOptions(
-				new StringSelectMenuOptionBuilder()
-					.setLabel('Random Teams')
-					.setDescription('The dual-type Grass/Poison Seed Pokémon.')
-					.setValue('bulbasaur'),
-				new StringSelectMenuOptionBuilder()
-					.setLabel('Team creation')
-					.setDescription('The Fire-type Lizard Pokémon.')
-					.setValue('charmander'),
-			);
-
-		const row = new ActionRowBuilder()
-			.addComponents(select);
-
-		await AdminChannel.send({
-			content: 'Tournament Settings',
-			components: [row],
-		});
 	},
 	setMatchScore: async function(interaction, bracket, match_id) {
 

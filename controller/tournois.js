@@ -2,6 +2,7 @@ const { JsonDatabase } = require('brackets-json-db');
 const { BracketsManager } = require('brackets-manager');
 const { EmbedBuilder, userMention } = require('discord.js');
 const { TournamentHelpers } = require('./helpers.js');
+const { TOURNAMENTTYPE } = require('../utils/utils.js');
 const { models } = require('../models');
 
 const fs = require('fs');
@@ -114,6 +115,7 @@ const Tournaments = {
 		const tournament_id = parseInt(interaction.customId.replace('start_', ''));
 		const { webhook, Tournament, ChannelObject: ScoreChannel } = await TournamentHelpers.getChannel(interaction, tournament_id, 'scoreChannel');
 		const { ChannelObject: LobbyChannel } = await TournamentHelpers.getChannel(interaction, tournament_id, 'lobbyChannel');
+		const TournamentSettings = JSON.parse(Tournament.settings);
 		if (Tournament) {
 
 			const teams = await models.Teams.findAll({
@@ -137,8 +139,8 @@ const Tournaments = {
 
 			await manager.create({
 				tournamentId: tournament_id,
-				name: 'Elimination stage',
-				type: 'single_elimination',
+				name: Tournament.name,
+				type: TournamentSettings.TournamentType.config,
 				seeding:  teams.map(team => team.name),
 				settings: {
 					// consolationFinal: true,
@@ -233,17 +235,24 @@ const Tournaments = {
 		await TournamentHelpers.adminsControlsButtons(interaction, tournamentId, 'checkin');
 		console.log('Tournament status updated : Check In');
 	},
-	addParticipant: async function(interaction, user_id, name, tournamentId) {
+	adminReturnStep: async function(interaction) {
+		const tournamentId = interaction.customId.replace('return_', '');
+		await models.Tournaments.update({ status : 'signin' }, { where : { id : tournamentId } });
+		await TournamentHelpers.adminsControlsButtons(interaction, tournamentId, 'signin');
+		console.log('Tournament status updated : Sign In (Return step)');
+	},
+	addParticipant: async function(interaction, user_id, name, tournamentId, fake = false) {
 		const Tournament = await TournamentHelpers.getTournament(tournamentId);
-		console.log(Tournament);
 		const participantCheck = models.Participants.findOne({ where : { user_id: user_id, tournamentId: parseInt(tournamentId) } });
 
 		// Si le joueur n'est pas déjà enregistré
 		if (!participantCheck.length) {
 			await models.Participants.create({ user_id: user_id, name: name, tournamentId: parseInt(tournamentId) });
 			// console.log(interaction)
-			const role = await interaction.member.guild.roles.fetch(Tournament.roleId);
-			await interaction.member.roles.add(role);
+			if (!fake) {
+				const role = await interaction.member.guild.roles.fetch(Tournament.roleId);
+				await interaction.member.roles.add(role);
+			}
 		}
 		else {
 			interaction.reply({ content: 'Vous êtes déjà inscrit au tournoi !', ephemeral: true });
