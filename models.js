@@ -62,7 +62,6 @@ const Participants = sequelize.define('participant', {
 Tournaments.hasMany(Teams, { onDelete: 'CASCADE' });
 Tournaments.hasMany(Participants, { onDelete: 'CASCADE' });
 Teams.hasMany(Participants);
-Participants.hasOne(Teams);
 
 const models = {
   Tournaments,

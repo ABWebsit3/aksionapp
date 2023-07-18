@@ -1,6 +1,6 @@
 const { JsonDatabase } = require('brackets-json-db');
 const { BracketsManager } = require('brackets-manager');
-const { EmbedBuilder, userMention } = require('discord.js');
+const { EmbedBuilder, userMention, ActionRowBuilder, UserSelectMenuBuilder, ChannelType, spoiler, ButtonBuilder, ButtonStyle, channelMention } = require('discord.js');
 const { TournamentHelpers } = require('./helpers.js');
 const { TOURNAMENTTYPE } = require('../utils/utils.js');
 const { models } = require('../models');
@@ -93,23 +93,55 @@ const Tournaments = {
 		await interaction.reply({ content: 'Équipes créées, Mise à jour du tableau des participants', ephemeral: true });
 
 	},
-	createTeam: async function(interaction, tournamentId) {
-		const { ChannelObject : AdminChannel } = await TournamentHelpers.getChannel(interaction, tournamentId, 'adminChannel');
-		const { Tournament } = await TournamentHelpers.getTournament(tournamentId);
-		const row = new ActionRowBuilder();
-		for (let i = 1; i <= Tournament.settings.teamSize; i++) {
-			const select = new userSelectMenuBuilder()
-				.setCustomId('starter')
-				.setPlaceholder(`Joueur ${i}`);
+	createTeam: async function(interaction, tournamentId, DMchannel) {
+		await interaction.deferReply({ ephemeral: true });
+		const { webhook, ChannelObject : RegisteredChannel } = await TournamentHelpers.getChannel(interaction, tournamentId, 'registeredChannel', 'signin');
+		// On vide les message en DM ! EUREKA !
+		// DMchannel.messages.fetch().then(messages => messages.map(m => {m.delete();}));
 
-			row.addComponents(select);
-		}
+		const Tournament = await TournamentHelpers.getTournament(tournamentId);
 
-
-		await AdminChannel.send({
-			content: 'Créer ton équipe : Le premier joueur inscrit sera le capitaine.',
-			components: [row],
+		const teamName = interaction.fields.getTextInputValue('teamName');
+		const team = await models.Teams.create({
+			name: teamName,
+			tournamentId: tournamentId,
 		});
+
+		const thread = await RegisteredChannel.threads.create({
+			name: `Équipe : ${teamName}`,
+			autoArchiveDuration: 60,
+			type : ChannelType.PrivateThread,
+			reason: 'Needed a separate thread for moderation',
+		});
+		console.log(thread.joinable);
+		if (thread.joinable) await thread.join();
+
+
+		const select = new UserSelectMenuBuilder()
+			.setCustomId(`playersforteam_${tournamentId}_${team.id}`)
+			.setPlaceholder('Joueurs')
+			.setMinValues(parseInt(Tournament.settings.TeamsSizes))
+			.setMaxValues(parseInt(Tournament.settings.TeamsSizes));
+
+		const lockButton = new ButtonBuilder()
+			.setCustomId(`lockplayersforteam_${team.id}`)
+			.setLabel('Confirmer les joueurs')
+			.setStyle(ButtonStyle.Danger);
+
+		const selectrow = new ActionRowBuilder().addComponents(select);
+		const lock = new ActionRowBuilder().addComponents(lockButton);
+
+		await webhook.send({
+			content: `${spoiler(userMention(interaction.user.id))}
+Équipe : ${teamName}
+Inscription au tournoi : ${Tournament.name}
+Créer ton équipe : Tu sera le capitaine. Ajoute les ${parseInt(Tournament.settings.TeamsSizes) - 1} autres`,
+			components: [selectrow, lock],
+			threadId: thread.id,
+		});
+
+		await interaction.editReply({ content: `Vous pouvez créer votre équipe ! ${channelMention(thread.id)}`, ephemeral: true });
+
 	},
 	startTournament: async function(interaction) {
 		const tournament_id = parseInt(interaction.customId.replace('start_', ''));
@@ -258,6 +290,33 @@ const Tournaments = {
 			interaction.reply({ content: 'Vous êtes déjà inscrit au tournoi !', ephemeral: true });
 		}
 
+	},
+	addParticipantToTeam: async function(interaction) {
+		console.log(interaction.customId);
+		const [ tournamentId, teamId ] = interaction.customId.replace('playersforteam_', '').split('_');
+		const users = interaction.users;
+		let reply = '';
+		const Tournament = await TournamentHelpers.getTournament(tournamentId);
+		await models.Participants.destroy({ where: { teamId : teamId } });
+		users.every(async u => {
+			console.log(u.id);
+			const participantCheck = await models.Participants.findOne({ where : { user_id: u.id, tournamentId: parseInt(tournamentId) } });
+			console.log(participantCheck);
+			// Si le joueur n'est pas déjà enregistré
+			if (!participantCheck) {
+				await models.Participants.create({ user_id: u.id, name: u.name, tournamentId: parseInt(tournamentId), teamId: parseInt(teamId) });
+				const role = await interaction.member.guild.roles.fetch(Tournament.roleId);
+				await interaction.member.roles.add(role);
+				reply += `Joueur ${u.name} prêt à être ajouté à l'équipe \n\t`;
+
+			}
+			else {
+				reply += `Joueur ${u.name} déjà dans une équipe, sélectionnez une autre personne \n\t`;
+
+			}
+		});
+		console.log(reply);
+		await interaction.reply({ content: reply, ephemeral: true });
 	},
 	removeParticipant: async function(interaction, user_id, tournamentId) {
 		const Tournament = await TournamentHelpers.getTournament(tournamentId);

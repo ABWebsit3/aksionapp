@@ -44,14 +44,14 @@ const data = new SlashCommandBuilder()
 
 const execute = async function(interaction) {
 	if (interaction.options._subcommand === 'create') {
-		
+
 		const TournamentType = TOURNAMENTTYPES.filter(type => type.value == interaction.options._hoistedOptions[0].value);
-		console.log(TournamentType)
+		console.log(TournamentType);
 		// Chargement du modal pour la configuration du tournoi
 		TournamentHelpers.loadTournamentModal(interaction);
 		const filter = (_interaction) => _interaction.customId === 'tournamentSettings';
 		interaction.awaitModalSubmit({ filter, time: 15_000 })
-			.then(_interaction => initTournament(_interaction, TournamentType[0] ))
+			.then(_interaction => initTournament(_interaction, TournamentType[0]))
 			.catch(console.error);
 
 	}
@@ -72,7 +72,7 @@ const execute = async function(interaction) {
 
 		const tournamentId = interaction.options._hoistedOptions[0].value;
 		const Tournament = await TournamentHelpers.getTournament(tournamentId);
-		
+
 
 		if (Tournament.status == 'signin') {
 			const { ChannelObject } = await TournamentHelpers.getChannel(interaction, tournamentId, 'registeredChannel', Tournament.status);
@@ -84,23 +84,13 @@ const execute = async function(interaction) {
 				Ton équipe sera annoncé avant le debut du tournoi : ${channelMention(ChannelObject.id)} `, ephemeral: true });
 			}
 			else {
-				console.log(interaction)
-				interaction.user.send('test');
-				const collectorFilter = m => m.content.includes('discord');
-				const collector = interaction.channel.createMessageCollector({ filter: collectorFilter, time: 15000 });
-
-				collector.on('collect', m => {
-					console.log(`Collected ${m.content}`);
-				});
-
-				collector.on('end', collected => {
-					console.log(`Collected ${collected.size} items`);
-				});
-				/*TournamentHelpers.loadCreateTeamModal(interaction);
+				const DMchannel = interaction.user.dmChannel || await interaction.user.createDM();
+				
+				TournamentHelpers.loadCreateTeamModal(interaction);
 				const filter = (_interaction) => _interaction.customId === 'createTeam';
 				interaction.awaitModalSubmit({ filter, time: 15_000 })
-					.then(_interaction => Tournament.createTeam(_interaction, tournamentId))
-					.catch(console.error);*/
+					.then(_interaction => Tournaments.createTeam(_interaction, tournamentId, DMchannel))
+					.catch(console.error);
 			}
 
 
@@ -220,14 +210,14 @@ const initTournament = async function(interaction, tournamentType) {
 				},
 
 			];
-			console.log(tournamentType)
+			console.log(tournamentType);
 
 			const settings = {
 				TournamentType : tournamentType,
-				TeamsSizes: '5',
+				TeamsSizes: tournamentTeamSize,
 				ConsolationRound : 'true',
 			};
-			console.log(settings)
+			console.log(settings);
 
 			await models.Tournaments.update({
 				guildId: groupChannel.guildId,
@@ -244,7 +234,7 @@ const initTournament = async function(interaction, tournamentType) {
 
 			await interaction.editReply({ content: 'Tournoi créé', ephemeral: true });
 			console.log('Tournament created');
-			
+
 		}
 		else {
 			await interaction.editReply({ content: 'Erreur ! La taille des équipe doit être compris entre 1 et 5', ephemeral: true });

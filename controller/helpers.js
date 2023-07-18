@@ -176,12 +176,12 @@ const TournamentHelpers = {
 	loadCreateTeamModal: async function(interaction) {
 
 		const createTeamModal = new ModalBuilder()
-			.setCustomId('tournamentSettings')
+			.setCustomId('createTeam')
 			.setTitle('Créer une nouvelle équipe');
 		// Add components to modal
 		// Create the text input components
 		const teamName = new TextInputBuilder()
-			.setCustomId('tournamentName')
+			.setCustomId('teamName')
 			.setLabel('Nom de l\'équipe')
 			.setStyle(TextInputStyle.Short);
 
