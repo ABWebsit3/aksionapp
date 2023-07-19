@@ -294,29 +294,30 @@ Créer ton équipe : Tu sera le capitaine. Ajoute les ${parseInt(Tournament.sett
 	addParticipantToTeam: async function(interaction) {
 		console.log(interaction.customId);
 		const [ tournamentId, teamId ] = interaction.customId.replace('playersforteam_', '').split('_');
+
 		const users = interaction.users;
-		let reply = '';
+		let answer = '';
 		const Tournament = await TournamentHelpers.getTournament(tournamentId);
+		await interaction.reply({ content: 'Sélection terminé !', ephemeral: true });
 		await models.Participants.destroy({ where: { teamId : teamId } });
-		users.every(async u => {
-			console.log(u.id);
+		await users.map(async u => {
+			console.log(u);
 			const participantCheck = await models.Participants.findOne({ where : { user_id: u.id, tournamentId: parseInt(tournamentId) } });
-			console.log(participantCheck);
 			// Si le joueur n'est pas déjà enregistré
 			if (!participantCheck) {
-				await models.Participants.create({ user_id: u.id, name: u.name, tournamentId: parseInt(tournamentId), teamId: parseInt(teamId) });
+				await models.Participants.create({ user_id: u.id, name: u.username, tournamentId: parseInt(tournamentId), teamId: parseInt(teamId) });
 				const role = await interaction.member.guild.roles.fetch(Tournament.roleId);
 				await interaction.member.roles.add(role);
-				reply += `Joueur ${u.name} prêt à être ajouté à l'équipe \n\t`;
+				await interaction.followUp({ content: `Joueur ${u.username} prêt à être ajouté à l'équipe \n\t`, ephemeral: true });
 
 			}
 			else {
-				reply += `Joueur ${u.name} déjà dans une équipe, sélectionnez une autre personne \n\t`;
+				
+				await interaction.followUp({ content: `Joueur ${u.username} déjà dans une équipe, sélectionnez une autre personne \n\t`, ephemeral: true });
 
 			}
 		});
-		console.log(reply);
-		await interaction.reply({ content: reply, ephemeral: true });
+		
 	},
 	removeParticipant: async function(interaction, user_id, tournamentId) {
 		const Tournament = await TournamentHelpers.getTournament(tournamentId);
