@@ -44,10 +44,7 @@ const Tournaments = sequelize.define('tournaments', {
 const Teams = sequelize.define('teams', {
   name: {
     type: Sequelize.STRING,
-  },
-  team_id: {
-    type: Sequelize.INTEGER,
-  },
+  }
 });
 
 const Participants = sequelize.define('participant', {
@@ -56,6 +53,9 @@ const Participants = sequelize.define('participant', {
   },
   user_id: {
     type: Sequelize.BIGINT,
+  },
+  checkin: {
+    type: Sequelize.BOOLEAN,
   }
 });
 

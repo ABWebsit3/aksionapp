@@ -124,7 +124,7 @@ const Tournaments = {
 			.setMaxValues(parseInt(Tournament.settings.TeamsSizes));
 
 		const lockButton = new ButtonBuilder()
-			.setCustomId(`lockplayersforteam_${team.id}`)
+			.setCustomId(`lockplayersforteam_${tournamentId}`)
 			.setLabel('Confirmer les joueurs')
 			.setStyle(ButtonStyle.Danger);
 
@@ -141,6 +141,31 @@ Créer ton équipe : Tu sera le capitaine. Ajoute les ${parseInt(Tournament.sett
 		});
 
 		await interaction.editReply({ content: `Vous pouvez créer votre équipe ! ${channelMention(thread.id)}`, ephemeral: true });
+
+	},
+	CheckIn: async function(interaction, tournamentId) {
+
+		/* const participants = await models.Participants.findAll({ where: { tournamentId: tournamentId } });
+		console.log(participants)
+		for (const p of participants) {
+			const user = await interaction.client.users.fetch(p.user_id.toString());
+			//user.send('Test depuis le bot Aksion !')
+		}*/
+
+		// 201285952318996480 MON ID USER
+		const user = await interaction.client.users.fetch('201285952318996480');
+		const checkInButton = new ButtonBuilder()
+			.setCustomId('checkin_' + user.id)
+			.setLabel('✅ Check-In')
+			.setStyle(ButtonStyle.Success);
+
+		const row = new ActionRowBuilder()
+			.addComponents([checkInButton]);
+
+		user.send({
+			content: 'Confirmer votre présence en cliquant sur le button "Check-In".',
+			components: [row],
+		});
 
 	},
 	startTournament: async function(interaction) {
@@ -256,21 +281,29 @@ Créer ton équipe : Tu sera le capitaine. Ajoute les ${parseInt(Tournament.sett
 
 	},
 	startSignInTournament: async function(interaction) {
-		const tournamentId = interaction.customId.replace('signin_', '');
+		const tournamentId = interaction.customId.replace('startSignin_', '');
+		const { webhook, Tournament } = await TournamentHelpers.getChannel(interaction, tournamentId, 'lobbyChannel');
 		await models.Tournaments.update({ status : 'signin' }, { where : { id : tournamentId } });
 		await TournamentHelpers.adminsControlsButtons(interaction, tournamentId, 'signin');
+		webhook.send(`Les inscriptions pour le tournoi ${Tournament.name} sont ouvert !`);
 		console.log('Tournament status updated : Sign In');
 	},
 	startCheckInTournament: async function(interaction) {
-		const tournamentId = interaction.customId.replace('checkin_', '');
+		const tournamentId = interaction.customId.replace('startCheckin_', '');
+		const { webhook, Tournament } = await TournamentHelpers.getChannel(interaction, tournamentId, 'lobbyChannel');
+		this.CheckIn(interaction, tournamentId);
 		await models.Tournaments.update({ status : 'checkin' }, { where : { id : tournamentId } });
 		await TournamentHelpers.adminsControlsButtons(interaction, tournamentId, 'checkin');
+		webhook.send(`Les inscriptions pour le tournoi ${Tournament.name} sont fermé !
+Le Check-In est ouvert ! Confirmez votre présence pour participer.`);
 		console.log('Tournament status updated : Check In');
 	},
 	adminReturnStep: async function(interaction) {
 		const tournamentId = interaction.customId.replace('return_', '');
+		const { webhook, Tournament } = await TournamentHelpers.getChannel(interaction, tournamentId, 'lobbyChannel');
 		await models.Tournaments.update({ status : 'signin' }, { where : { id : tournamentId } });
 		await TournamentHelpers.adminsControlsButtons(interaction, tournamentId, 'signin');
+		webhook.send(`Les inscriptions pour le tournoi ${Tournament.name} sont ouvert !`);
 		console.log('Tournament status updated : Sign In (Return step)');
 	},
 	addParticipant: async function(interaction, user_id, name, tournamentId, fake = false) {
@@ -294,14 +327,12 @@ Créer ton équipe : Tu sera le capitaine. Ajoute les ${parseInt(Tournament.sett
 	addParticipantToTeam: async function(interaction) {
 		console.log(interaction.customId);
 		const [ tournamentId, teamId ] = interaction.customId.replace('playersforteam_', '').split('_');
-
 		const users = interaction.users;
-		let answer = '';
 		const Tournament = await TournamentHelpers.getTournament(tournamentId);
+
 		await interaction.reply({ content: 'Sélection terminé !', ephemeral: true });
 		await models.Participants.destroy({ where: { teamId : teamId } });
 		await users.map(async u => {
-			console.log(u);
 			const participantCheck = await models.Participants.findOne({ where : { user_id: u.id, tournamentId: parseInt(tournamentId) } });
 			// Si le joueur n'est pas déjà enregistré
 			if (!participantCheck) {
@@ -309,15 +340,12 @@ Créer ton équipe : Tu sera le capitaine. Ajoute les ${parseInt(Tournament.sett
 				const role = await interaction.member.guild.roles.fetch(Tournament.roleId);
 				await interaction.member.roles.add(role);
 				await interaction.followUp({ content: `Joueur ${u.username} prêt à être ajouté à l'équipe \n\t`, ephemeral: true });
-
 			}
 			else {
-				
 				await interaction.followUp({ content: `Joueur ${u.username} déjà dans une équipe, sélectionnez une autre personne \n\t`, ephemeral: true });
-
 			}
 		});
-		
+
 	},
 	removeParticipant: async function(interaction, user_id, tournamentId) {
 		const Tournament = await TournamentHelpers.getTournament(tournamentId);

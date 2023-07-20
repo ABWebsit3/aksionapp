@@ -10,7 +10,7 @@ const TournamentHelpers = {
 			await channel.createWebhook({
 				name: 'Aksion',
 				avatar: 'assets/avatar.png',
-			}).then(/*console.log*/)
+			}).then(/* console.log*/)
 				.catch(console.error);
 		}
 
@@ -22,6 +22,7 @@ const TournamentHelpers = {
 
 			id: Tournament.id,
 			name: Tournament.name,
+			channels: JSON.parse(Tournament.channels),
 			status: Tournament.status,
 			settings : JSON.parse(Tournament.settings),
 			roleId : Tournament.roleId,
@@ -37,22 +38,23 @@ const TournamentHelpers = {
 	 * @returns
 	 */
 	getChannel: async function(interaction, tournamentId, channel, status = 'waiting') {
-		const Tournament = await models.Tournaments.findOne({ where: { id: tournamentId, status : status } });
-		const Channels = JSON.parse(Tournament.channels);
-		const Channel = Channels.filter(data => data.name === channel)[0];
+		const Tournament = await this.getTournament(tournamentId);
+		const Channel = Tournament.channels.filter(data => data.name === channel)[0];
 		const ChannelObject = await interaction.client.channels.cache.get(Channel.id);
 		const webhooks = await ChannelObject.fetchWebhooks();
 		const webhook = webhooks.first();
 
 		return { webhook, ChannelObject, Tournament };
 	},
-
+	/*getUser: async function(interaction, userId){
+		const models.User
+		return 
+	},*/
 	adminsControlsButtons : async function(interaction, tournament_id, status) {
 		const { webhook, Tournament, ChannelObject : AdminChannel } = await this.getChannel(interaction, tournament_id, 'adminChannel', status);
-		const TournamentSettings = JSON.parse(Tournament.settings);
 		const messages = await AdminChannel.messages.fetch();
 
-		console.log(TournamentSettings)
+		// console.log(Tournament.settings);
 		const messagefiltered = messages.filter(message => message.webhookId == webhook.id).first();
 
 		const adminEmbed = {
@@ -65,16 +67,16 @@ const TournamentHelpers = {
 				},
 				{
 					name: 'Type de tournoi',
-					value: TournamentSettings.TournamentType.name,
+					value: Tournament.settings.TournamentType.name,
 
 				},
 				{
 					name: 'Taille des équipes',
-					value: TournamentSettings.TeamsSizes,
+					value: Tournament.settings.TeamsSizes,
 				},
 				{
 					name: 'Round de consolation',
-					value: TournamentSettings.ConsolationRound ? 'Oui' : 'Non',
+					value: Tournament.settings.ConsolationRound ? 'Oui' : 'Non',
 				},
 				{
 					name: 'État du tournoi',
@@ -89,12 +91,12 @@ const TournamentHelpers = {
 			.setStyle(ButtonStyle.Success);*/
 
 		const openSignInButton = new ButtonBuilder()
-			.setCustomId('signin_' + tournament_id)
+			.setCustomId('startSignin_' + tournament_id)
 			.setLabel('✅ Ouvrir l\'inscription')
 			.setStyle(ButtonStyle.Success);
 
 		const openCheckInButton = new ButtonBuilder()
-			.setCustomId('checkin_' + tournament_id)
+			.setCustomId('startCheckin_' + tournament_id)
 			.setLabel('✍ Ouvrir le Check-in')
 			.setStyle(ButtonStyle.Success);
 
@@ -302,7 +304,7 @@ Tournoi terminé `,
 			.setColor(0x0099FF)
 			.setTitle('Liste des participants');
 		let text = '';
-		await participants.forEach(async player => {
+		for (const player of participants) {
 			if (player.user_id) {
 				text += `${userMention(player.user_id)}
 						`;
@@ -311,13 +313,63 @@ Tournoi terminé `,
 				text += `${player.name}
 					`;
 			}
-		});
+		}
 
 		await ParticipantsEmbed.addFields({ name: 'Participants', value: text });
 		// Charger la liste des participants pour afficher/Mettre à jour
 		await webhook.send({ embeds: [ParticipantsEmbed] });
 
 	},
+	showRegisteredTeams : async function(interaction, tournamentId) {
+		
+		console.log(tournamentId);
+		const { webhook, ChannelObject : registeredChannel, Tournament } = await this.getChannel(interaction, tournamentId, 'registeredChannel', 'signin');
+
+		const teams = await models.Teams.findAll({ where: { tournamentId: tournamentId } });
+
+		const messages = await registeredChannel.messages.fetch();
+
+		await registeredChannel.bulkDelete(messages);
+
+		const ParticipantsEmbed = new EmbedBuilder()
+			.setColor(0x0099FF)
+			.setTitle('Liste des équipes');
+
+		for (const t of teams) {
+			const participants = await models.Participants.findAll({ where: { teamId: t.id } });
+			console.log(t.name);
+			let text = '';
+			for (const player of participants) {
+				if (player.user_id) {
+					text += `${userMention(player.user_id)} ${player.checkin ? '✅' : ''}
+										`;
+				}
+				else {
+					text += `${player.name}
+									`;
+				}
+
+			}
+
+			await ParticipantsEmbed.addFields({ name: `[${t.name}]`, value: text });
+		}
+		console.log(ParticipantsEmbed);
+		await webhook.send({ embeds : [ParticipantsEmbed] });
+
+	},
+	confirmTeamSelection: async function(interaction) {
+		const tournamentId = interaction.customId.replace(_customId, 'lockplayersforteam_');
+		this.showRegisteredTeams(interaction, tournamentId);
+	},
+	confirmPlayerCheckIn: async function(interaction) {
+		const userId = interaction.customId.replace('checkin_', '');
+		await models.Participants.update({ checkin : true }, { where: { user_id : userId} })
+		const user = await models.Participants.findOne({where: {user_id: userId}})
+		this.showRegisteredTeams(interaction, user.tournamentId);
+		const DMchannel = interaction.user.dmChannel || await interaction.user.createDM();
+		DMchannel.messages.fetch().then(messages => messages.map(m => {m.delete();}));
+		interaction.client.user.send('Check-In confirmé ! GL HF!');
+	}
 
 };
 

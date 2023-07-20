@@ -1,5 +1,6 @@
 const { Events } = require('discord.js');
 const { userRegistrationforTournament, Tournaments } = require('../controller/tournois');
+const { TournamentHelpers } = require('../controller/helpers');
 
 module.exports = {
 	name: Events.InteractionCreate,
@@ -42,10 +43,10 @@ module.exports = {
 			}
 		}
 		else if (interaction.isButton()) {
-			if (interaction.customId.startsWith('signin_')) {
+			if (interaction.customId.startsWith('startSignin_')) {
 				Tournaments.startSignInTournament(interaction);
 			}
-			if (interaction.customId.startsWith('checkin_')) {
+			if (interaction.customId.startsWith('startCheckin_')) {
 				Tournaments.startCheckInTournament(interaction);
 			}
 			if (interaction.customId.startsWith('shuffle_teams_')) {
@@ -60,6 +61,15 @@ module.exports = {
 			if (interaction.customId.startsWith('return_')) {
 				Tournaments.adminReturnStep(interaction);
 			}
+			if (interaction.customId.startsWith('lockplayersforteam_')) {
+				TournamentHelpers.confirmTeamSelection(interaction);
+				
+			}
+			if (interaction.customId.startsWith('checkin_')) {
+				console.log('checkin');
+				TournamentHelpers.confirmPlayerCheckIn(interaction);
+			}
+			
 		}
 		else if (interaction.isUserSelectMenu()) {
 
