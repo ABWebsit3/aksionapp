@@ -172,43 +172,52 @@ Créer ton équipe : Tu sera le capitaine. Ajoute les ${parseInt(Tournament.sett
 		const tournament_id = parseInt(interaction.customId.replace('start_', ''));
 		const { webhook, Tournament, ChannelObject: ScoreChannel } = await TournamentHelpers.getChannel(interaction, tournament_id, 'scoreChannel');
 		const { ChannelObject: LobbyChannel } = await TournamentHelpers.getChannel(interaction, tournament_id, 'lobbyChannel');
-		const TournamentSettings = JSON.parse(Tournament.settings);
+	
 		if (Tournament) {
 
 			const teams = await models.Teams.findAll({
-				where: {
-					tournamentId: tournament_id,
-				},
+				include: {
+					model: models.Participants,
+					where: {
+					  checkin: 1,
+					  tournamentId: tournament_id,
+					}
+				  }
 			});
+			if(teams.length >=2 ){
+				let tournamentSize = 1;
 
-			let tournamentSize = 1;
-
-			while (tournamentSize < teams.length) {
-				tournamentSize *= 2;
-			}
-
-			if (tournamentSize != teams.length) {
-				const rest = tournamentSize - teams.length;
-				for (let i = 0; i < rest; i++) {
-					await teams.push({ name:null });
+				while (tournamentSize < teams.length) {
+					tournamentSize *= 2;
 				}
+
+				if (tournamentSize != teams.length) {
+					const rest = tournamentSize - teams.length;
+					for (let i = 0; i < rest; i++) {
+						await teams.push({ name:null });
+					}
+				}
+
+				await manager.create({
+					tournamentId: tournament_id,
+					name: Tournament.name,
+					type: Tournament.settings.TournamentType.config,
+					seeding:  teams.map(team => team.name),
+					settings: {
+						// consolationFinal: true,
+						balanceByes: true,
+					},
+				});
+
+				TournamentHelpers.showMatchThreads(tournament_id, manager, webhook, ScoreChannel);
+				await models.Tournaments.update({ status: 'started' }, { where: { id: tournament_id } });
+
+				LobbyChannel.send({ content: 'Tournoi démarré ! GL HF ' });
 			}
-
-			await manager.create({
-				tournamentId: tournament_id,
-				name: Tournament.name,
-				type: TournamentSettings.TournamentType.config,
-				seeding:  teams.map(team => team.name),
-				settings: {
-					// consolationFinal: true,
-					balanceByes: true,
-				},
-			});
-
-			TournamentHelpers.showMatchThreads(tournament_id, manager, webhook, ScoreChannel);
-			await models.Tournaments.update({ status: 'started' }, { where: { id: tournament_id } });
-
-			LobbyChannel.send({ content: 'Tournoi démarré ! GL HF ' });
+			else {
+				await interaction.reply({ content: 'Un minimum de deux équipes est nécessaire pour lancer le tournoi \n\t Les joueurs ont-ils fait leur check-in ?', ephemeral: true });
+			}
+			
 			// console.log(current_match)
 		}
 		else {
@@ -250,14 +259,17 @@ Créer ton équipe : Tu sera le capitaine. Ajoute les ${parseInt(Tournament.sett
 						opponents['2'].result = 'win';
 					}
 
+					const stage = await manager.get.currentStage(parseInt(tournamentId))
+					console.log(stage)
+				
 					await manager.update.match({
 						id:  parseInt(match_id),
 						opponent1: opponents['1'],
 						opponent2: opponents['2'],
 					});
-
+console.log( await manager.get.finalStandings(stage.id))
 					await _interaction.reply({ content: 'Score mis à jour', ephemeral: true });
-
+					/*
 					// On check si des matchs sont encore en cours avec le statut 2
 					const bracketupdated = await manager.get.tournamentData(parseInt(tournamentId));
 					const roundEnded = bracketupdated.match.filter(match => match.id == match_id && match.status == 2);
@@ -269,7 +281,7 @@ Créer ton équipe : Tu sera le capitaine. Ajoute les ${parseInt(Tournament.sett
 						TournamentHelpers.updateMatchThreads(interaction, tournamentId, manager, opponents);
 						// Si dernier match du tournoi: finir tounroi et afficher vainqueur
 						// Utiliser données de opponents pour afficher le gagnant !
-					}
+					}*/
 
 				})
 				.catch(console.error);

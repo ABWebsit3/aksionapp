@@ -358,7 +358,7 @@ Tournoi terminé `,
 
 	},
 	confirmTeamSelection: async function(interaction) {
-		const tournamentId = interaction.customId.replace(_customId, 'lockplayersforteam_');
+		const tournamentId = interaction.customId.replace('lockplayersforteam_','' );
 		this.showRegisteredTeams(interaction, tournamentId);
 	},
 	confirmPlayerCheckIn: async function(interaction) {
@@ -367,8 +367,14 @@ Tournoi terminé `,
 		const user = await models.Participants.findOne({where: {user_id: userId}})
 		this.showRegisteredTeams(interaction, user.tournamentId);
 		const DMchannel = interaction.user.dmChannel || await interaction.user.createDM();
-		DMchannel.messages.fetch().then(messages => messages.map(m => {m.delete();}));
-		interaction.client.user.send('Check-In confirmé ! GL HF!');
+		DMchannel.messages.fetch().then(messages => {
+			console.log(messages)
+			messages.map(m => {
+				console.log(m)
+				m.delete();
+			})
+		});
+		interaction.user.send('Check-In confirmé ! GL HF!');
 	}
 
 };
