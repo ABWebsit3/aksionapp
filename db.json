@@ -2,27 +2,37 @@
     "participant": [
         {
             "id": 0,
-            "tournament_id": 107,
-            "name": "YOLO"
+            "tournament_id": 112,
+            "name": "Équipe 2"
         },
         {
             "id": 1,
-            "tournament_id": 107,
-            "name": "AHAHAH"
+            "tournament_id": 112,
+            "name": "Équipe 3"
+        },
+        {
+            "id": 2,
+            "tournament_id": 112,
+            "name": "Équipe 4"
+        },
+        {
+            "id": 3,
+            "tournament_id": 112,
+            "name": "Équipe 1"
         }
     ],
     "stage": [
         {
             "id": 0,
-            "tournament_id": 107,
-            "name": "2v2",
+            "tournament_id": 112,
+            "name": "Nouveau tournoi",
             "type": "single_elimination",
             "number": 1,
             "settings": {
                 "balanceByes": true,
                 "consolationFinal": false,
                 "matchesChildCount": 0,
-                "size": 2,
+                "size": 4,
                 "seedOrdering": [
                     "inner_outer"
                 ]
@@ -42,6 +52,12 @@
             "number": 1,
             "stage_id": 0,
             "group_id": 0
+        },
+        {
+            "id": 1,
+            "number": 2,
+            "stage_id": 0,
+            "group_id": 0
         }
     ],
     "match": [
@@ -52,7 +68,7 @@
             "group_id": 0,
             "round_id": 0,
             "child_count": 0,
-            "status": 4,
+            "status": 5,
             "opponent1": {
                 "id": 0,
                 "position": 1,
@@ -60,8 +76,48 @@
                 "result": "win"
             },
             "opponent2": {
+                "id": 3,
+                "position": 4,
+                "score": 0,
+                "result": "loss"
+            }
+        },
+        {
+            "id": 1,
+            "number": 2,
+            "stage_id": 0,
+            "group_id": 0,
+            "round_id": 0,
+            "child_count": 0,
+            "status": 5,
+            "opponent1": {
                 "id": 1,
                 "position": 2,
+                "score": 1,
+                "result": "win"
+            },
+            "opponent2": {
+                "id": 2,
+                "position": 3,
+                "score": 0,
+                "result": "loss"
+            }
+        },
+        {
+            "id": 2,
+            "number": 1,
+            "stage_id": 0,
+            "group_id": 0,
+            "round_id": 1,
+            "child_count": 0,
+            "status": 4,
+            "opponent1": {
+                "id": 0,
+                "score": 1,
+                "result": "win"
+            },
+            "opponent2": {
+                "id": 1,
                 "score": 0,
                 "result": "loss"
             }

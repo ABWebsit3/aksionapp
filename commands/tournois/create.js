@@ -16,9 +16,9 @@ const data = new SlashCommandBuilder()
 					.setDescription('The input to echo back')
 					.setRequired(true)
 					.addChoices(
-						{ name: TOURNAMENTTYPES[0].name, value: TOURNAMENTTYPES[0].value },
+						// { name: TOURNAMENTTYPES[0].name, value: TOURNAMENTTYPES[0].value },
 						{ name: TOURNAMENTTYPES[1].name, value: TOURNAMENTTYPES[1].value },
-						{ name: TOURNAMENTTYPES[2].name, value: TOURNAMENTTYPES[2].value },
+						// { name: TOURNAMENTTYPES[2].name, value: TOURNAMENTTYPES[2].value },
 					)))
 	.addSubcommand(subcommand =>
 		subcommand
@@ -45,8 +45,11 @@ const data = new SlashCommandBuilder()
 const execute = async function(interaction) {
 	if (interaction.options._subcommand === 'create') {
 
+		if (!interaction.member.permissions.has(PermissionsBitField.Flags.BanMembers)) {
+			await interaction.reply({ content: 'Tu ne possèdes pas les droit pour démarrer un tournoi !', ephemeral: true });
+			return false;
+		}
 		const TournamentType = TOURNAMENTTYPES.filter(type => type.value == interaction.options._hoistedOptions[0].value);
-		console.log(TournamentType);
 		// Chargement du modal pour la configuration du tournoi
 		TournamentHelpers.loadTournamentModal(interaction);
 		const filter = (_interaction) => _interaction.customId === 'tournamentSettings';
@@ -56,7 +59,11 @@ const execute = async function(interaction) {
 
 	}
 	else if (interaction.options._subcommand === 'delete') {
-
+		console.log(interaction.member.permissions);
+		if (!interaction.member.permissions.has(PermissionsBitField.Flags.BanMembers)) {
+			await interaction.reply({ content: 'Tu ne possèdes pas les droit pour supprimer un tournoi !', ephemeral: true });
+			return false;
+		}
 		console.log('delete tournament');
 		const tournamentId = interaction.options._hoistedOptions[0].value;
 		const tournament = await models.Tournaments.findOne({ where: { id: tournamentId } });
@@ -85,7 +92,7 @@ const execute = async function(interaction) {
 			}
 			else {
 				const DMchannel = interaction.user.dmChannel || await interaction.user.createDM();
-				
+
 				TournamentHelpers.loadCreateTeamModal(interaction);
 				const filter = (_interaction) => _interaction.customId === 'createTeam';
 				interaction.awaitModalSubmit({ filter, time: 15_000 })
@@ -121,7 +128,14 @@ const autocomplete = async function(interaction) {
 
 	if (interaction.options._subcommand === 'delete') {
 		console.log('Witch the tournament');
-		const result = await models.Tournaments.findAll();
+		const result = await models.Tournaments.findAll({
+			include: {
+				model: models.Guilds,
+				where: {
+					guild_id: interaction.member.guild.id,
+				},
+			},
+		});
 		const choices = result.map(r => { return { name: r.name, value: r.id.toString() }; });
 		if (interaction.isAutocomplete()) {
 			interaction.respond(choices)
@@ -130,7 +144,14 @@ const autocomplete = async function(interaction) {
 	}
 	if (interaction.options._subcommand === 'join') {
 		console.log('Witch the tournament');
-		const result = await models.Tournaments.findAll();
+		const result = await models.Tournaments.findAll({
+			include: {
+				model: models.Guilds,
+				where: {
+					guild_id: interaction.member.guild.id,
+				},
+			  },
+		});
 		const choices = result.map(r => { return { name: r.name, value: r.id.toString() }; });
 		if (interaction.isAutocomplete()) {
 			interaction.respond(choices)
@@ -150,16 +171,26 @@ const initTournament = async function(interaction, tournamentType) {
 		const tournamentName = interaction.fields.getTextInputValue('tournamentName');
 		const tournamentTeamSize = parseInt(interaction.fields.getTextInputValue('tournamentTeamsize'));
 		if (tournamentTeamSize >= 1 && tournamentTeamSize <= 5) {
+
+			const [guilds, created] = await models.Guilds.findOrCreate({
+				where: { guild_id: interaction.member.guild.id },
+				defaults: {
+					guild_id: interaction.member.guild.id,
+					name: interaction.member.guild.name,
+				},
+			});
+			console.log(guilds.id);
 			const tournament = await models.Tournaments.create({
 				name: tournamentName,
 				teamsSize: tournamentTeamSize,
+				guildId: guilds.id,
 			});
 
 			const role = await interaction.member.guild.roles.create({ name: tournamentName });
 
 			const groupChannel = await TournamentHelpers.createChannel(interaction, { type: ChannelType.GuildCategory, name: tournamentName });
-			const registeredChannel = await TournamentHelpers.createChannel(interaction, { name: 'Participants', parent: groupChannel.id });
 			const lobbyChannel = await TournamentHelpers.createChannel(interaction, { name: 'Lobby', reason: 'Lobby for players', parent: groupChannel.id });
+			const registeredChannel = await TournamentHelpers.createChannel(interaction, { name: 'Participants', parent: groupChannel.id });
 			const scoreChannel = await TournamentHelpers.createChannel(interaction, {
 				name: 'Score',
 				reason: 'Lobby for players',
@@ -220,7 +251,6 @@ const initTournament = async function(interaction, tournamentType) {
 			console.log(settings);
 
 			await models.Tournaments.update({
-				guildId: groupChannel.guildId,
 				channels: JSON.stringify(channelGroup),
 				settings: JSON.stringify(settings),
 				roleId: role.id,
