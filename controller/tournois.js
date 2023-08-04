@@ -351,7 +351,6 @@ Le Check-In est ouvert ! Confirmez votre présence pour participer.`);
 				where: {
 					user_id: u.id,
 					tournamentId: parseInt(tournamentId),
-					teamId: parseInt(teamId),
 					'$team.teamStatus$': 'locked',
 				},
 				include:{
@@ -360,6 +359,7 @@ Le Check-In est ouvert ! Confirmez votre présence pour participer.`);
 				},
 
 			});
+			console.log(participantCheck)
 			// Si le joueur n'est pas déjà enregistré
 			if (!participantCheck) {
 				await models.Participants.create({ user_id: u.id, name: u.username, tournamentId: parseInt(tournamentId), teamId: parseInt(teamId) });

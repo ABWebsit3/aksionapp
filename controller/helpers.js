@@ -339,39 +339,44 @@ Gagnant : ${winner} `,
 
 		await registeredChannel.bulkDelete(messages);
 
-		const ParticipantsEmbed = new EmbedBuilder()
+		/*const ParticipantsEmbed = new EmbedBuilder()
 			.setColor(0x0099FF)
-			.setTitle('Liste des équipes');
-
+			.setTitle('Liste des équipes');*/
+		let text = '';
 		for (const t of teams) {
 			const participants = await models.Participants.findAll({ where: { teamId: t.id } });
 
-			let text = '';
+			text += `\n## [${t.name}] \n`;
 			for (const player of participants) {
 				if (player.user_id) {
-					text += `${userMention(player.user_id)} ${player.checkin ? '✅' : ''}
-										`;
+					text += `- ${userMention(player.user_id)} ${player.checkin ? '✅' : ''} \n`;
 				}
 				else {
-					text += `${player.name}
-									`;
+					text += `- ${player.name} \n`;
 				}
 
 			}
 			console.log(text);
-			await ParticipantsEmbed.addFields({ name: `[${t.name}]`, value: text });
+			
 		}
 
-		await webhook.send({ embeds : [ParticipantsEmbed] });
+		await webhook.send({ content : text });
 
 	},
 	confirmTeamSelection: async function(interaction) {
 		const [ tournamentId, teamId ] = interaction.customId.replace('lockplayersforteam_', '').split('_');
 
-		await models.Teams.update({ teamStatus: 'locked', where: {
+		await models.Teams.update({ teamStatus: 'locked'},{ where: {
 			id: teamId,
 		} });
+
 		this.showRegisteredTeams(interaction, tournamentId);
+		await interaction.channel.messages.fetch().then(messages => {
+			messages.map(m => {
+				console.log(m);
+				m.delete();
+			});
+		});
 		await interaction.reply('Joueurs confirmé ! Bonne chance!');
 	},
 	confirmPlayerCheckIn: async function(interaction) {
