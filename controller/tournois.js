@@ -1,8 +1,7 @@
 const { JsonDatabase } = require('brackets-json-db');
 const { BracketsManager } = require('brackets-manager');
-const { EmbedBuilder, userMention, ActionRowBuilder, UserSelectMenuBuilder, ChannelType, spoiler, ButtonBuilder, ButtonStyle, channelMention } = require('discord.js');
+const { EmbedBuilder, userMention, ActionRowBuilder, UserSelectMenuBuilder, ChannelType, spoiler, ButtonBuilder, ButtonStyle, channelMention, PermissionsBitField, roleMention } = require('discord.js');
 const { TournamentHelpers } = require('./helpers.js');
-const { TOURNAMENTTYPE } = require('../utils/utils.js');
 const { models } = require('../models');
 
 const fs = require('fs');
@@ -299,14 +298,59 @@ Une fois que tu as sélectionné les joueurs clique sur "Confirmer les joueurs"`
 	},
 	startCheckInTournament: async function(interaction) {
 		const tournamentId = interaction.customId.replace('startCheckin_', '');
-		const { webhook, Tournament } = await TournamentHelpers.getChannel(interaction, tournamentId, 'lobbyChannel');
-		this.CheckIn(interaction, tournamentId);
-		await models.Tournaments.update({ status : 'checkin' }, { where : { id : tournamentId } });
+		const { ChannelObject : groupChannel, Tournament } = await TournamentHelpers.getChannel(interaction, tournamentId, 'groupChannel');
+		const { webhook: lobbyWebhook } = await TournamentHelpers.getChannel(interaction, tournamentId, 'lobbyChannel');
+		const checkinChannel = await TournamentHelpers.createChannel(interaction, {
+			name: 'Check In',
+			reason: 'Check-in channel',
+			parent: groupChannel.id,
+			position: 2,
+			permissionOverwrites: [
+				{
+					id: interaction.guild.id,
+					deny: [PermissionsBitField.Flags.ViewChannel],
+				},
+				{
+					id: Tournament.roleId,
+					allow: [PermissionsBitField.Flags.ViewChannel],
+					deny: [PermissionsBitField.Flags.SendMessages],
+				},
+			],
+		});
+
+		const checkInButton = new ButtonBuilder()
+			.setCustomId('checkin_' + Tournament.id)
+			.setLabel('✅ Check-In')
+			.setStyle(ButtonStyle.Success);
+
+		const row = new ActionRowBuilder()
+			.addComponents([checkInButton]);
+
+		checkinChannel.send({
+			content: `${roleMention(Tournament.roleId)}
+Confirmer votre présence en cliquant sur le button "Check-In".`,
+			components: [row],
+		});
+
+		const channels = JSON.parse(Tournament.channels);
+		channels.push({
+			name: 'checkinChannel',
+			id: checkinChannel.id,
+		});
+
+		await models.Tournaments.update({
+			status : 'checkin',
+			channels: JSON.stringify(channels),
+		}, { where : { id : tournamentId } });
+
 		await TournamentHelpers.adminsControlsButtons(interaction, tournamentId, 'checkin');
-		webhook.send(`Les inscriptions pour le tournoi ${Tournament.name} sont fermé !
+
+		lobbyWebhook.send(`Les inscriptions pour le tournoi ${Tournament.name} sont fermé !
 Le Check-In est ouvert ! Confirmez votre présence pour participer.`);
+		interaction.reply('Les inscriptions pour le tournoi sont fermé ! Le Check-In est ouvert !');
 		console.log('Tournament status updated : Check In');
 	},
+
 	adminReturnStep: async function(interaction) {
 		const tournamentId = interaction.customId.replace('return_', '');
 		const { webhook, Tournament } = await TournamentHelpers.getChannel(interaction, tournamentId, 'lobbyChannel');
@@ -315,6 +359,7 @@ Le Check-In est ouvert ! Confirmez votre présence pour participer.`);
 		webhook.send(`Les inscriptions pour le tournoi ${Tournament.name} sont ouvert !`);
 		console.log('Tournament status updated : Sign In (Return step)');
 	},
+	
 	addParticipant: async function(interaction, user_id, name, tournamentId, fake = false) {
 		const Tournament = await TournamentHelpers.getTournament(tournamentId);
 		const participantCheck = models.Participants.findOne({ where : { user_id: user_id, tournamentId: parseInt(tournamentId) } });
@@ -343,10 +388,14 @@ Le Check-In est ouvert ! Confirmez votre présence pour participer.`);
 		const users = interaction.users;
 		const { webhook, Tournament } = await TournamentHelpers.getChannel(interaction, tournamentId, 'registeredChannel');
 
+		// CHECKER SI UN JOUEUR EST DEJA PRESENT !!!!!!
+
 		await interaction.reply({ content: 'Sélection terminé !', ephemeral: true });
 		await models.Participants.destroy({ where: { teamId : teamId } });
 		const error = [];
-		await users.map(async u => {
+		console.log(users);
+		for (const user of users) {
+			const u = user[1];
 			const participantCheck = await models.Participants.findOne({
 				where: {
 					user_id: u.id,
@@ -359,7 +408,7 @@ Le Check-In est ouvert ! Confirmez votre présence pour participer.`);
 				},
 
 			});
-			console.log(participantCheck)
+			// console.log(participantCheck);
 			// Si le joueur n'est pas déjà enregistré
 			if (!participantCheck) {
 				await models.Participants.create({ user_id: u.id, name: u.username, tournamentId: parseInt(tournamentId), teamId: parseInt(teamId) });
@@ -369,9 +418,12 @@ Le Check-In est ouvert ! Confirmez votre présence pour participer.`);
 			}
 			else {
 				// await interaction.followUp({ content: `Joueur ${u.username} déjà dans une équipe, sélectionnez une autre personne \n\t`, ephemeral: true });
-				error.push({ name: u.username });
+				await error.push({ name: u.username });
+				console.log(error);
 			}
-		});
+		};
+
+		console.log(error);
 
 		if (!error.length) {
 			await interaction.followUp({ content: 'Joueur prêt à être ajouté à l\'équipe \n\t', ephemeral: true });
@@ -390,9 +442,9 @@ Le Check-In est ouvert ! Confirmez votre présence pour participer.`);
 		}
 		else {
 			console.log(error.map(u => u.name));
-			await interaction.followUp({ content: `Les joueurs : 
-			 ${error.map(u => u.name)} 
-			 déjà dans une équipe, sélectionnez une autre personne \n\t`, ephemeral: true });
+			await interaction.followUp({ content: `Le(s) joueur(s) : 
+			 ${error.map(u => u.name).join(', ')} 
+			 possède(nt) déjà dans une équipe, sélectionnez un autre joueur \n\t`, ephemeral: true });
 		}
 
 

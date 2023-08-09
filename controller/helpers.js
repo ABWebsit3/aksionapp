@@ -1,4 +1,4 @@
-const { ActionRowBuilder, ButtonBuilder, ButtonStyle, ModalBuilder, TextInputBuilder, TextInputStyle, spoiler, EmbedBuilder, userMention, StringSelectMenuBuilder, StringSelectMenuOptionBuilder } = require('discord.js');
+const { ActionRowBuilder, ButtonBuilder, ButtonStyle, ModalBuilder, TextInputBuilder, TextInputStyle, spoiler, EmbedBuilder, userMention, StringSelectMenuBuilder, StringSelectMenuOptionBuilder, ChannelType } = require('discord.js');
 const { models } = require('../models');
 
 
@@ -37,17 +37,21 @@ const TournamentHelpers = {
 	 * @param {String} status
 	 * @returns
 	 */
-	getChannel: async function(interaction, tournamentId, channel, status = 'waiting') {
+	getChannel: async function(interaction, tournamentId, channel) {
 		const Tournament = await this.getTournament(tournamentId);
 		const Channel = Tournament.channels.filter(data => data.name === channel)[0];
 		const ChannelObject = await interaction.client.channels.cache.get(Channel.id);
-		const webhooks = await ChannelObject.fetchWebhooks();
-		const webhook = webhooks.first();
+		let webhook = {};
+
+		if (ChannelObject.type != ChannelType.GuildCategory) {
+			const webhooks = await ChannelObject.fetchWebhooks();
+			webhook = webhooks.first();
+		}
 
 		return { webhook, ChannelObject, Tournament };
 	},
-	getRole: async function(roleId) {
-		return await interaction.member.guild.roles.fetch(Tournament.roleId) || 'none';
+	getRole: async function(interaction, roleId) {
+		return await interaction.member.guild.roles.fetch(roleId) || 'none';
 	},
 	/* getUser: async function(interaction, userId){
 		const models.User
@@ -339,7 +343,7 @@ Gagnant : ${winner} `,
 
 		await registeredChannel.bulkDelete(messages);
 
-		/*const ParticipantsEmbed = new EmbedBuilder()
+		/* const ParticipantsEmbed = new EmbedBuilder()
 			.setColor(0x0099FF)
 			.setTitle('Liste des équipes');*/
 		let text = '';
@@ -357,7 +361,6 @@ Gagnant : ${winner} `,
 
 			}
 			console.log(text);
-			
 		}
 
 		await webhook.send({ content : text });
@@ -366,7 +369,7 @@ Gagnant : ${winner} `,
 	confirmTeamSelection: async function(interaction) {
 		const [ tournamentId, teamId ] = interaction.customId.replace('lockplayersforteam_', '').split('_');
 
-		await models.Teams.update({ teamStatus: 'locked'},{ where: {
+		await models.Teams.update({ teamStatus: 'locked' }, { where: {
 			id: teamId,
 		} });
 
@@ -380,17 +383,17 @@ Gagnant : ${winner} `,
 		await interaction.reply('Joueurs confirmé ! Bonne chance!');
 	},
 	confirmPlayerCheckIn: async function(interaction) {
-		const userId = interaction.customId.replace('checkin_', '');
-		await models.Participants.update({ checkin : true }, { where: { user_id : userId } });
-		const user = await models.Participants.findOne({ where: { user_id: userId } });
-		this.showRegisteredTeams(interaction, user.tournamentId);
-		const DMchannel = interaction.user.dmChannel || await interaction.user.createDM();
-		DMchannel.messages.fetch().then(messages => {
-			messages.map(m => {
-				m.delete();
-			});
-		});
-		interaction.user.send('Check-In confirmé ! GL HF!');
+		const tournamentId = interaction.customId.replace('checkin_', '');
+		const userId = interaction.user.id;
+		const user = await models.Participants.findOne({ where : { user_id: userId, checkin : true } });
+		if (!user) {
+			await models.Participants.update({ checkin : true }, { where: { user_id : userId } });
+			this.showRegisteredTeams(interaction, tournamentId);
+			interaction.reply({ content:'Check-In confirmé ! GL HF!', ephemeral: true });
+		}
+		else {
+			interaction.reply({ content:'Check-In déjà confirmé !', ephemeral: true });
+		}
 	},
 
 };
