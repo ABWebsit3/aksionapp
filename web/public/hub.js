@@ -155,7 +155,7 @@
 		el.innerHTML = `<div class="sweep"></div><div class="bar"></div>
 			<div class="turn-in">
 				<div class="ttl"><span class="kick">${esc(t.kicker)}</span><h1>${esc(t.pre)} <em>${esc(t.em)}</em> ${esc(t.post)}</h1></div>
-				${t.timer ? `<div class="timer-box"><span id="timer" class="timer">0:00</span>${c.s.status === 'veto' ? '<div class="tbar"><i id="tbar"></i></div>' : ''}</div>` : ''}
+				${t.timer ? `<div class="timer-box"><span id="timer" class="timer">0:00</span>${c.s.status === 'veto' ? '<div class="tbar"><i id="tbar"></i></div>' : ''}${c.cur && c.cur.t === 'ban' ? '<span class="tnote">À 0:00, pas de ban</span>' : ''}</div>` : ''}
 				${t.undo && v.captain ? `<div class="row" style="gap:8px"><button class="ghost" data-action="undo" ${canUndo ? '' : 'disabled'} title="Annule la dernière action de ton équipe">Annuler</button></div>` : ''}
 			</div>`;
 		updateTimer();
@@ -166,7 +166,8 @@
 		$('#rail').hidden = !c.veto;
 		$('#rail').innerHTML = c.seq.map((x, i) => {
 			const code = x.t === 'ban' ? 'Ban' : x.t === 'pick' ? 'Pick' : x.t === 'side' ? 'Côté' : 'Déc.';
-			const st = i < step ? 'done' : i === step && c.s.status === 'veto' ? 'cur' : '';
+			let st = i < step ? 'done' : i === step && c.s.status === 'veto' ? 'cur' : '';
+			if (i < step && c.log[i].skipped) st += ' skip';
 			const title = `${i + 1}. ${x.team ? teamName(x.team) + ' — ' : ''}${PB.phaseName(c.seq, i)}`;
 			return `<span class="seg ${tcls(x.team)} k-${x.t} ${st}" title="${esc(title)}">${code}</span>`;
 		}).join('');
@@ -204,8 +205,12 @@
 		let bs = '';
 		for (let i = 0; i < total; i++) {
 			const e = bans[i];
-			const p = e ? item(e.id) : null;
+			const p = e && e.id ? item(e.id) : null;
 			const next = !e && i === bans.length && pendBan;
+			if (e && e.skipped) {
+				bs += `<span class="bs skip ${isNew(e.i) ? 'fx' : ''}" title="Pas de ban (temps écoulé)">—</span>`;
+				continue;
+			}
 			const label = p ? ini(p.name) : (next && ui.sel ? ini(item(ui.sel).name) : '');
 			bs += `<span class="bs ${p ? 'full' : ''} ${next ? 'next' : ''} ${e && isNew(e.i) ? 'fx' : ''}" title="${esc(p ? p.name : 'Ban ' + (i + 1))}">${esc(label)}</span>`;
 		}
@@ -216,8 +221,10 @@
 	function actionsHTML(entries) {
 		const acts = entries.map(e => {
 			const verb = e.t === 'ban' ? 'Ban' : e.t === 'pick' ? 'Pick' : 'Côté';
-			const name = e.t === 'side' ? (e.mapId ? `${e.side} · ${item(e.mapId).name}` : e.side) : item(e.id).name;
-			return `<div class="act k-${e.t} ${isNew(e.i) ? 'fx' : ''}"><span class="v">${verb}</span><b>${esc(name)}</b></div>`;
+			let name = e.t === 'side' ? (e.mapId ? `${e.side} · ${item(e.mapId).name}` : e.side) : null;
+			if (e.skipped) name = 'Aucun (temps écoulé)';
+			else if (name === null) name = item(e.id).name;
+			return `<div class="act k-${e.t} ${e.skipped ? 'skip' : ''} ${isNew(e.i) ? 'fx' : ''}"><span class="v">${verb}</span><b>${esc(name)}</b></div>`;
 		}).join('');
 		return `<div class="list"><span class="sub">Actions</span>${acts || '<div class="empty">Aucune action pour l\'instant</div>'}</div>`;
 	}
@@ -407,11 +414,12 @@
 	function renderLog(c) {
 		const items = c.log.map((e, i) => {
 			let t;
-			if (e.t === 'ban') t = `${teamName(e.team)} bannit ${item(e.id).name}`;
+			if (e.skipped) t = `${teamName(e.team)} n'a pas banni (temps écoulé)`;
+			else if (e.t === 'ban') t = `${teamName(e.team)} bannit ${item(e.id).name}`;
 			else if (e.t === 'pick') t = `${teamName(e.team)} choisit ${item(e.id).name}`;
 			else if (e.t === 'decider') t = `Carte décisive : ${item(e.id).name}`;
 			else t = `${teamName(e.team)} prend le côté ${e.side}${e.mapId ? ' sur ' + item(e.mapId).name : ''}`;
-			return `<li class="k-${e.t} ${tcls(e.team)} ${isNew(i) ? 'fx' : ''}">${esc(t)}</li>`;
+			return `<li class="k-${e.t} ${e.skipped ? 'skip' : ''} ${tcls(e.team)} ${isNew(i) ? 'fx' : ''}">${esc(t)}</li>`;
 		}).join('');
 		const toss = c.s.coinToss ? `<span style="font-family:var(--f-body);font-weight:400;font-size:14px;color:var(--mu)">· pile ou face gagné par ${esc(teamName('A'))}</span>` : '';
 		const empty = c.s.status === 'checkin' ? 'Le veto commencera dès que tout le monde sera présent.' : 'Aucune action.';

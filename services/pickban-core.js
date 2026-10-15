@@ -7,7 +7,8 @@
  * au lieu d'être codés en dur.
  *
  * Convention : équipe A = gagnant du pile ou face (first pick, côté bleu sur LoL).
- * Entrées du log : { t, team, id } pour ban/pick/decider, { t: 'side', team, side, mapId }.
+ * Entrées du log : { t, team, id } pour ban/pick/decider, { t: 'side', team, side, mapId },
+ * { t: 'ban', team, id: null, skipped: true } pour un ban non fait (chrono écoulé).
  */
 (function(root) {
 	'use strict';
@@ -35,10 +36,12 @@
 	 * @param {string} opts.seq clé de SEQS (bo1, bo3, lol, dota, sides)
 	 * @param {string[]} opts.pool identifiants autorisés (cartes, champions, héros)
 	 * @param {string[]} opts.sides côtés possibles
+	 * @param {number} [opts.seed] entier tiré par le serveur : départage la carte décisive
+	 *   quand plusieurs cartes restent (bans sautés). 0 = première carte restante.
 	 */
 	function createState(opts) {
 		if (!SEQS[opts.seq]) throw new Error('Séquence inconnue : ' + opts.seq);
-		return { kind: opts.kind, seq: opts.seq, pool: (opts.pool || []).slice(), sides: (opts.sides || []).slice(), log: [] };
+		return { kind: opts.kind, seq: opts.seq, pool: (opts.pool || []).slice(), sides: (opts.sides || []).slice(), seed: opts.seed || 0, log: [] };
 	}
 
 	function sequenceOf(state) {
@@ -92,16 +95,30 @@
 		else {
 			throw new Error('Étape automatique');
 		}
-		const log = state.log.concat([entry]);
+		return withDecider(state, state.log.concat([entry]));
+	}
+
+	/**
+	 * Chrono écoulé sur un ban : le tour passe sans ban. Seuls les bans peuvent être sautés.
+	 */
+	function skip(state, team) {
+		const step = currentStep(state);
+		if (!step) throw new Error('Veto terminé');
+		if (step.t !== 'ban') throw new Error('Seul un ban peut être sauté');
+		if (step.team !== team) throw new Error('Ce n\'est pas le tour de cette équipe');
+		return withDecider(state, state.log.concat([{ t: 'ban', team, id: null, skipped: true }]));
+	}
+
+	// Carte décisive automatique : la carte restante (départagée par seed si des bans ont été sautés)
+	function withDecider(state, log) {
 		const next = sequenceOf(state)[log.length];
-		// Carte décisive automatique : la seule carte restante
 		if (next && next.t === 'decider') {
 			const used = {};
 			log.forEach(e => {
 				if (e.id && e.t !== 'side') used[e.id] = 1;
 			});
-			const remaining = state.pool.find(id => !used[id]);
-			if (remaining) log.push({ t: 'decider', team: null, id: remaining });
+			const remaining = state.pool.filter(id => !used[id]);
+			if (remaining.length) log.push({ t: 'decider', team: null, id: remaining[(state.seed || 0) % remaining.length] });
 		}
 		return Object.assign({}, state, { log });
 	}
@@ -114,10 +131,15 @@
 		return Object.assign({}, state, { log });
 	}
 
-	/** Équipe qui a fait la dernière action humaine (ignore la décisive automatique). */
+	/**
+	 * Équipe qui a fait la dernière action humaine (ignore la décisive automatique).
+	 * null si la dernière étape a été sautée par le chrono : elle ne peut pas être annulée.
+	 */
 	function lastActor(state) {
 		for (let i = state.log.length - 1; i >= 0; i--) {
-			if (state.log[i].team) return state.log[i].team;
+			const e = state.log[i];
+			if (e.skipped) return null;
+			if (e.team) return e.team;
 		}
 		return null;
 	}
@@ -138,7 +160,7 @@
 		return (t === 'ban' ? 'Bans ' : 'Picks ') + n;
 	}
 
-	const api = { SEQS, TURN_SECONDS, createState, sequenceOf, currentStep, isDone, statusMap, lastMapId, apply, undo, lastActor, phaseName };
+	const api = { SEQS, TURN_SECONDS, createState, sequenceOf, currentStep, isDone, statusMap, lastMapId, apply, skip, undo, lastActor, phaseName };
 	if (typeof module !== 'undefined' && module.exports) module.exports = api;
 	else root.PickBan = api;
 })(typeof window !== 'undefined' ? window : globalThis);

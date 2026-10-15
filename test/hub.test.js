@@ -65,12 +65,25 @@ test('parcours complet : recherche, check-in, pick & ban, résultat', async () =
 		const wrongTeam = await call(captainOf('B'), '/veto', nextAction(view));
 		assert.strictEqual(wrongTeam.status, 400);
 
-		// annulation : seul le capitaine qui vient d'agir peut annuler
-		view = (await call(captainOf('A'), '/veto', nextAction(view))).body;
+		// chrono écoulé sur un ban : pas encore expiré → rien ; expiré → ban sauté, le tour passe
+		const { skipExpiredTurn } = require('../services/matchService');
+		const before = await skipExpiredTurn(matchId);
+		assert.strictEqual(before.veto.log.length, 0);
+		const skipped = await skipExpiredTurn(matchId, Date.now() + 31_000);
+		assert.deepStrictEqual(skipped.veto.log[0], { t: 'ban', team: 'A', id: null, skipped: true });
+		view = (await call(captainOf('A'))).body;
+		assert.strictEqual(view.veto.current.team, 'B');
+		assert.strictEqual((await call(captainOf('A'), '/undo', {})).status, 400);
+		view = (await call(captainOf('B'), '/veto', nextAction(view))).body;
+		view = (await call(captainOf('B'), '/undo', {})).body;
 		assert.strictEqual(view.veto.log.length, 1);
-		assert.strictEqual((await call(captainOf('B'), '/undo', {})).status, 400);
-		view = (await call(captainOf('A'), '/undo', {})).body;
-		assert.strictEqual(view.veto.log.length, 0);
+
+		// annulation : seul le capitaine qui vient d'agir peut annuler
+		view = (await call(captainOf('B'), '/veto', nextAction(view))).body;
+		assert.strictEqual(view.veto.log.length, 2);
+		assert.strictEqual((await call(captainOf('A'), '/undo', {})).status, 400);
+		view = (await call(captainOf('B'), '/undo', {})).body;
+		assert.strictEqual(view.veto.log.length, 1);
 
 		while (view.status === 'veto') {
 			const res = await call(captainOf(view.veto.current.team), '/veto', nextAction(view));
@@ -79,6 +92,7 @@ test('parcours complet : recherche, check-in, pick & ban, résultat', async () =
 		}
 		assert.strictEqual(view.status, 'live');
 		assert.strictEqual(view.veto.log.filter(e => e.t === 'decider').length, 1);
+		assert.strictEqual(view.veto.log.filter(e => e.skipped).length, 1);
 		assert.strictEqual(view.veto.log.length, 8);
 
 		const loserKey = winnerKey === 'A' ? 'B' : 'A';

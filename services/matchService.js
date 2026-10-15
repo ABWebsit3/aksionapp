@@ -72,6 +72,7 @@ async function getMatch(id) {
 /**
  * Applique `mutator(match)` sous verrou et persiste le résultat.
  * Le mutator modifie l'objet en place et peut lever une erreur pour refuser l'action.
+ * S'il renvoie `false`, rien n'a changé : pas d'écriture ni de notification.
  */
 function mutate(id, mutator) {
 	return withMatchLock(id, async () => {
@@ -79,7 +80,7 @@ function mutate(id, mutator) {
 		if (!row) throw new Error('Match introuvable');
 		const match = toMatch(row);
 		const previous = match.status;
-		await mutator(match);
+		if (await mutator(match) === false) return match;
 		const data = { ...match };
 		delete data.id;
 		delete data.status;
@@ -106,7 +107,10 @@ function isCaptain(match, userId) {
 function createVetoState(match) {
 	const game = getGame(match.game);
 	const sides = (game.sides || []).map(([name]) => name);
-	if (game.veto === 'maps') return PickBan.createState({ kind: 'maps', seq: match.format, pool: game.maps.map(m => m.id), sides });
+	if (game.veto === 'maps') {
+		const seed = Math.floor(Math.random() * 1000);
+		return PickBan.createState({ kind: 'maps', seq: match.format, pool: game.maps.map(m => m.id), sides, seed });
+	}
 	if (game.veto === 'draft') return PickBan.createState({ kind: 'draft', seq: game.draft, pool: poolIds(game.id), sides: [] });
 	return PickBan.createState({ kind: 'sides', seq: 'sides', pool: [], sides });
 }
@@ -190,6 +194,49 @@ function cancelMatch(id, reason, userId = null) {
 	});
 }
 
+/**
+ * Chrono écoulé (30 s) sur un ban : le tour passe sans ban. Les picks et les choix de côté attendent.
+ * @param {number} expectedIndex étape visée (ignore un timer devenu obsolète), facultatif
+ */
+function skipExpiredTurn(id, now = Date.now(), expectedIndex = null) {
+	return mutate(id, match => {
+		if (match.status !== 'veto') return false;
+		const step = PickBan.currentStep(match.veto);
+		if (!step || step.t !== 'ban') return false;
+		if (expectedIndex !== null && step.index !== expectedIndex) return false;
+		if (now < match.veto.turnStartedAt + PickBan.TURN_SECONDS * 1000) return false;
+		match.veto = { ...PickBan.skip(match.veto, step.team), turnStartedAt: now };
+		if (PickBan.isDone(match.veto)) match.status = 'live';
+	});
+}
+
+// Un timer par match en veto, recalé à chaque modification ; le balayage périodique sert de filet (redémarrage)
+const turnTimers = new Map();
+function scheduleTurnTimer(match) {
+	clearTimeout(turnTimers.get(match.id));
+	turnTimers.delete(match.id);
+	if (match.status !== 'veto') return;
+	const step = PickBan.currentStep(match.veto);
+	if (!step || step.t !== 'ban') return;
+	const delay = Math.max(0, match.veto.turnStartedAt + PickBan.TURN_SECONDS * 1000 - Date.now()) + 250;
+	const timer = setTimeout(() => {
+		turnTimers.delete(match.id);
+		skipExpiredTurn(match.id, Date.now(), step.index).catch(console.error);
+	}, delay);
+	timer.unref();
+	turnTimers.set(match.id, timer);
+}
+
+function startTurnTimers() {
+	matchEvents.on('update', scheduleTurnTimer);
+	matchEvents.on('status', ({ match }) => scheduleTurnTimer(match));
+}
+
+async function expireVetoTurns() {
+	const rows = await models.Matches.findAll({ where: { status: 'veto' } });
+	for (const row of rows) await skipExpiredTurn(row.id).catch(console.error);
+}
+
 async function expireCheckins() {
 	const rows = await models.Matches.findAll({ where: { status: 'checkin' } });
 	const expired = rows.map(toMatch).filter(m => m.checkinDeadline < Date.now());
@@ -244,6 +291,9 @@ module.exports = {
 	checkIn,
 	vetoAction,
 	undoVeto,
+	skipExpiredTurn,
+	startTurnTimers,
+	expireVetoTurns,
 	reportResult,
 	cancelMatch,
 	expireCheckins,

@@ -297,3 +297,11 @@ main{max-width:1360px;margin:0 auto;padding:24px 24px 64px;display:flex;flex-dir
 .sfill,.pend{min-width:0}
 .sfill b,.pend b{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .slot .pl{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+
+/* ban sauté (chrono écoulé) */
+.tnote{font-family:var(--f-mono);font-size:11px;letter-spacing:.04em;color:var(--mu)}
+.seg.done.k-ban.skip{background:var(--s1);border-style:dashed;color:var(--mu)}
+.bs.skip{border-style:solid;color:var(--mu);font-family:var(--f-mono)}
+.bs.skip.fx{animation:popIn calc(320ms*var(--m)) var(--ease) both}
+.act.skip b{color:var(--mu);font-weight:500}
+.log li.k-ban.skip{color:var(--mu)}

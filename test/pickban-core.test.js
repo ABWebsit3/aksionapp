@@ -108,3 +108,34 @@ test('noms de phase', () => {
 	assert.strictEqual(PB.phaseName(seq, 12), 'Bans 2');
 	assert.strictEqual(PB.phaseName(PB.SEQS.bo1, 6), 'Carte décisive');
 });
+
+test('chrono écoulé : le ban est sauté et le tour passe à l\'équipe suivante', () => {
+	let s = PB.createState({ kind: 'draft', seq: 'lol', pool: HEROES });
+	s = PB.skip(s, 'A');
+	assert.deepStrictEqual(s.log[0], { t: 'ban', team: 'A', id: null, skipped: true });
+	assert.strictEqual(PB.currentStep(s).team, 'B');
+	assert.strictEqual(PB.lastActor(s), null, 'un ban sauté ne peut pas être annulé');
+	assert.deepStrictEqual(PB.statusMap(s), {});
+	assert.throws(() => PB.skip(s, 'A'), /tour/);
+});
+
+test('seuls les bans peuvent être sautés', () => {
+	let s = PB.createState({ kind: 'draft', seq: 'lol', pool: HEROES });
+	for (let i = 0; i < 6; i++) s = PB.skip(s, PB.currentStep(s).team);
+	assert.strictEqual(PB.currentStep(s).t, 'pick');
+	assert.throws(() => PB.skip(s, 'A'), /Seul un ban/);
+});
+
+test('BO1 avec un ban sauté : la décisive est tirée parmi les cartes restantes (seed)', () => {
+	const pool = MAPS.cs2;
+	const run = seed => {
+		let s = PB.createState({ kind: 'maps', seq: 'bo1', pool, sides: sidesOf('cs2'), seed });
+		['ancient', 'anubis', 'cache', 'dust2', 'inferno'].forEach((id, i) => {
+			s = PB.apply(s, { team: i % 2 ? 'B' : 'A', id });
+		});
+		s = PB.skip(s, 'B');
+		return s.log[s.log.length - 1];
+	};
+	assert.deepStrictEqual(run(0), { t: 'decider', team: null, id: 'mirage' });
+	assert.deepStrictEqual(run(1), { t: 'decider', team: null, id: 'nuke' });
+});
