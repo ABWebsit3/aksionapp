@@ -109,6 +109,24 @@ const Matches = sequelize.define('matches', {
 	data: { type: dialect === 'sqlite' ? Sequelize.TEXT : Sequelize.TEXT('long'), allowNull: false },
 });
 
+// Tableau des demandes de pracc : salon (forum ou textuel) configuré par serveur
+const GuildSettings = sequelize.define('guild_settings', {
+	guildId: { type: Sequelize.STRING, primaryKey: true },
+	praccChannelId: { type: Sequelize.STRING },
+	// null = tous les jeux
+	praccGame: { type: Sequelize.STRING },
+});
+
+// Annonces publiées pour une demande en file d'attente (une par serveur abonné)
+const PraccPosts = sequelize.define('pracc_posts', {
+	queueEntryId: { type: Sequelize.INTEGER, allowNull: false },
+	guildId: { type: Sequelize.STRING },
+	channelId: { type: Sequelize.STRING, allowNull: false },
+	messageId: { type: Sequelize.STRING, allowNull: false },
+	// forum : le post est un fil
+	threadId: { type: Sequelize.STRING },
+});
+
 Guilds.hasMany(Tournaments, { onDelete: 'CASCADE' });
 Tournaments.belongsTo(Guilds);
 Tournaments.hasMany(Teams, { onDelete: 'CASCADE' });
@@ -124,6 +142,8 @@ const models = {
 	MatchTeams,
 	QueueEntries,
 	Matches,
+	GuildSettings,
+	PraccPosts,
 };
 
 async function init() {

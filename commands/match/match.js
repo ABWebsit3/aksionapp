@@ -17,7 +17,8 @@ const data = new SlashCommandBuilder()
 			.addChoices(...Object.entries(MATCH_TYPES).map(([value, name]) => ({ name, value }))))
 		.addStringOption(o => o.setName('format').setDescription('Format (défaut : BO1)')
 			.addChoices({ name: 'BO1', value: 'bo1' }, { name: 'BO3', value: 'bo3' }, { name: 'BO5', value: 'bo5' }))
-		.addIntegerOption(o => o.setName('ecart').setDescription('Écart de niveau accepté (défaut : 1)').setMinValue(0).setMaxValue(3)))
+		.addIntegerOption(o => o.setName('ecart').setDescription('Écart de niveau accepté (défaut : 1)').setMinValue(0).setMaxValue(3))
+		.addBooleanOption(o => o.setName('publier').setDescription('Publier la demande sur les salons pracc des serveurs PraccHub (défaut : oui)')))
 	.addSubcommand(sub => sub
 		.setName('annuler')
 		.setDescription('Annuler la recherche de ton équipe')
@@ -37,6 +38,7 @@ async function execute(interaction) {
 			if (!(level >= 0 && level < game.levels.length)) throw new Error('Niveau invalide, choisis-le dans la liste proposée.');
 
 			await interaction.deferReply();
+			const announce = interaction.options.getBoolean('publier') ?? true;
 			const result = await search({
 				team,
 				format: interaction.options.getString('format') || 'bo1',
@@ -46,12 +48,13 @@ async function execute(interaction) {
 				channelId: interaction.channelId,
 				guildId: interaction.guildId,
 				requestedBy: interaction.user.id,
+				announce,
 			});
 			if (result.status === 'matched') {
 				return interaction.editReply('🎯 Adversaire trouvé ! Les infos du match arrivent juste en dessous.');
 			}
 			const minutes = Math.round(QUEUE_TTL_MS / 60000);
-			return interaction.editReply(`🔎 **${team.name}** recherche un ${MATCH_TYPES[result.entry.type].toLowerCase()} ${game.name} (${result.entry.format.toUpperCase()}, niveau ${game.levels[level]}). Je préviens ce salon dès qu'un adversaire est trouvé (recherche valable ${minutes} min).`);
+			return interaction.editReply(`🔎 **${team.name}** recherche un ${MATCH_TYPES[result.entry.type].toLowerCase()} ${game.name} (${result.entry.format.toUpperCase()}, niveau ${game.levels[level]}). Je préviens ce salon dès qu'un adversaire est trouvé (recherche valable ${minutes} min).${!announce ? '' : '\n📣 Ta demande est aussi publiée sur les salons pracc des serveurs PraccHub : une équipe peut l\'accepter directement.'}`);
 		}
 
 		if (sub === 'annuler') {

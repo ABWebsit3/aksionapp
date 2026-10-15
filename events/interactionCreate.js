@@ -2,6 +2,7 @@ const { Events } = require('discord.js');
 const { userRegistrationforTournament, Tournaments } = require('../controller/tournois');
 const { TournamentHelpers } = require('../controller/helpers');
 const { openHub } = require('../controller/match');
+const { onAcceptButton, onTeamPicked } = require('../controller/praccBoard');
 
 module.exports = {
 	name: Events.InteractionCreate,
@@ -48,6 +49,10 @@ module.exports = {
 				await openHub(interaction).catch(console.error);
 				return;
 			}
+			if (interaction.customId.startsWith('pracc_accept_')) {
+				await onAcceptButton(interaction).catch(console.error);
+				return;
+			}
 			if (interaction.customId.startsWith('startSignin_')) {
 				Tournaments.startSignInTournament(interaction);
 			}
@@ -75,6 +80,9 @@ module.exports = {
 				TournamentHelpers.confirmPlayerCheckIn(interaction);
 			}
 			
+		}
+		else if (interaction.isStringSelectMenu() && interaction.customId.startsWith('pracc_pick_')) {
+			await onTeamPicked(interaction).catch(console.error);
 		}
 		else if (interaction.isUserSelectMenu()) {
 

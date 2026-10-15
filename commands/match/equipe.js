@@ -2,6 +2,7 @@ const { SlashCommandBuilder, EmbedBuilder, userMention } = require('discord.js')
 const { Op } = require('sequelize');
 const { models } = require('../../models');
 const { GAMES, getGame } = require('../../config/games');
+const { cancelSearch } = require('../../services/matchmaking');
 
 // Remplaçants autorisés en plus des titulaires
 const MAX_SUBS = 2;
@@ -107,7 +108,7 @@ async function execute(interaction) {
 
 		if (sub === 'supprimer') {
 			const team = await captainTeam(interaction);
-			await models.QueueEntries.destroy({ where: { teamId: team.id } });
+			await cancelSearch(team.id);
 			await team.destroy();
 			return interaction.reply({ content: `🗑️ Équipe **${team.name}** supprimée.`, ephemeral: true });
 		}

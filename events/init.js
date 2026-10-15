@@ -2,6 +2,7 @@ const { Events } = require('discord.js');
 const { init } = require('./../models');
 const { startWebServer } = require('../web/server');
 const { registerMatchNotifications } = require('../controller/match');
+const { registerPraccBoard } = require('../controller/praccBoard');
 const { expireCheckins, expireVetoTurns, startTurnTimers } = require('../services/matchService');
 const { purgeExpired } = require('../services/matchmaking');
 const { refreshStale } = require('../services/catalog');
@@ -12,6 +13,7 @@ module.exports = {
 	async execute(client) {
 		await init();
 		registerMatchNotifications(client);
+		registerPraccBoard(client);
 		startTurnTimers();
 		// Après un redémarrage : les tours de ban déjà expirés sont sautés tout de suite
 		expireVetoTurns().catch(console.error);

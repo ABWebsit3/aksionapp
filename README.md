@@ -22,6 +22,19 @@ Jeux supportés : Valorant, Counter-Strike 2, League of Legends, Dota 2, Rocket 
    - « Annuler » retire la dernière action, seulement pour le capitaine qui vient de la faire.
 7. **Résultat** : chaque capitaine déclare le vainqueur. Si les deux déclarations concordent, le match est validé, sinon il passe en « contesté ».
 
+### Salon des demandes de pracc
+
+Pour que les équipes se trouvent même quand elles sont peu nombreuses, chaque serveur peut afficher les demandes de **tous** les serveurs PraccHub :
+
+1. Un admin (permission « Gérer le serveur ») lance `/pracc salon salon:<forum ou salon textuel> [jeu]`. Un **forum** est recommandé : chaque demande devient un post, avec des tags par jeu et par type.
+2. Chaque `/match chercher` sans adversaire immédiat est publié sur ces salons (désactivable avec `publier:false`). Les demandes déjà ouvertes sont publiées dès la configuration.
+3. Les joueurs discutent dans le post. Un capitaine clique sur **Accepter le pracc**, choisit son équipe (même jeu, même taille), et le match est créé aussitôt, aux conditions de la demande, sans contrôle de l'écart de niveau. Le check-in et le hub arrivent dans le salon de chaque équipe.
+4. Quand la demande est acceptée, annulée, expirée ou remplacée, les posts sont mis à jour, et les fils des demandes non abouties sont archivés.
+
+`/pracc voir` affiche la configuration, et `/pracc retirer` désactive le salon.
+
+Permissions du bot dans le salon : voir le salon, envoyer des messages, intégrer des liens, et pour un forum envoyer des messages dans les fils. « Gérer les salons » est optionnelle : elle sert à créer les tags du forum.
+
 `/match annuler` retire l'équipe de la file. `/match hub` redonne les liens vers tes matchs en cours.
 
 ## Installation
@@ -61,5 +74,6 @@ Le design du hub et sa spécification sont dans `docs/pickban-handoff/`.
 - `services/hubToken.js` : liens personnels signés (HMAC)
 - `web/` : serveur Express (API + temps réel SSE) et page du hub
 - `controller/match.js` : notifications Discord
+- `controller/praccBoard.js`, `commands/match/pracc.js` : salon des demandes de pracc
 - `commands/match/` : commandes `/equipe` et `/match`
 - `commands/tournois/`, `controller/tournois.js` : ancien module de tournois (conservé)
