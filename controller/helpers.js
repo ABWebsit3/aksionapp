@@ -8,7 +8,7 @@ const TournamentHelpers = {
 
 		if (typeof options.type == 'undefined') {
 			await channel.createWebhook({
-				name: 'Aksion',
+				name: 'PraccHub',
 				avatar: 'assets/avatar.png',
 			}).then(/* console.log*/)
 				.catch(console.error);

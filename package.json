@@ -1,15 +1,17 @@
 {
-  "name": "getting-started",
+  "name": "pracchub",
   "version": "1.0.0",
-  "description": "Discord example app",
+  "description": "PraccHub — bot Discord de matchmaking (matchs & scrims) avec hub web de check-in et pick & ban",
   "main": "app.js",
   "engines": {
-    "node": "16.x"
+    "node": ">=18"
   },
   "scripts": {
     "start": "node app.js",
     "register": "node deploy-commands.js",
-    "dev": "nodemon app.js"
+    "dev": "nodemon app.js",
+    "test": "node --test test/*.test.js",
+    "lint": "eslint ."
   },
   "author": "Alexandre Bailot",
   "license": "MIT",

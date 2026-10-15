@@ -1,6 +1,7 @@
 const { Events } = require('discord.js');
 const { userRegistrationforTournament, Tournaments } = require('../controller/tournois');
 const { TournamentHelpers } = require('../controller/helpers');
+const { openHub } = require('../controller/match');
 
 module.exports = {
 	name: Events.InteractionCreate,
@@ -43,6 +44,10 @@ module.exports = {
 			}
 		}
 		else if (interaction.isButton()) {
+			if (interaction.customId.startsWith('hub_open_')) {
+				await openHub(interaction).catch(console.error);
+				return;
+			}
 			if (interaction.customId.startsWith('startSignin_')) {
 				Tournaments.startSignInTournament(interaction);
 			}
