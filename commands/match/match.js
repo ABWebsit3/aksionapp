@@ -4,6 +4,7 @@ const { getGame, MATCH_TYPES } = require('../../config/games');
 const { search, cancelSearch, QUEUE_TTL_MS } = require('../../services/matchmaking');
 const { hubUrl } = require('../../services/hubToken');
 const { teamChoices } = require('./equipe');
+const { openOriginThread } = require('../../controller/praccBoard');
 
 const data = new SlashCommandBuilder()
 	.setName('match')
@@ -54,7 +55,9 @@ async function execute(interaction) {
 				return interaction.editReply('🎯 Adversaire trouvé ! Les infos du match arrivent juste en dessous.');
 			}
 			const minutes = Math.round(QUEUE_TTL_MS / 60000);
-			return interaction.editReply(`🔎 **${team.name}** recherche un ${MATCH_TYPES[result.entry.type].toLowerCase()} ${game.name} (${result.entry.format.toUpperCase()}, niveau ${game.levels[level]}). Je préviens ce salon dès qu'un adversaire est trouvé (recherche valable ${minutes} min).${!announce ? '' : '\n📣 Ta demande est aussi publiée sur les salons pracc des serveurs PraccHub : une équipe peut l\'accepter directement.'}`);
+			const reply = await interaction.editReply(`🔎 **${team.name}** recherche un ${MATCH_TYPES[result.entry.type].toLowerCase()} ${game.name} (${result.entry.format.toUpperCase()}, niveau ${game.levels[level]}). Je préviens ce salon dès qu'un adversaire est trouvé (recherche valable ${minutes} min).${!announce ? '' : '\n📣 Ta demande est aussi publiée sur les salons pracc des serveurs PraccHub : une équipe peut l\'accepter directement.'}`);
+			if (announce) await openOriginThread(reply, result.entry, team).catch(error => console.error('Pracc : fil d\'origine impossible :', error.message));
+			return reply;
 		}
 
 		if (sub === 'annuler') {

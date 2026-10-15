@@ -7,7 +7,7 @@ const assert = require('node:assert');
 const { ChannelType } = require('discord.js');
 const { init, models } = require('../models');
 const { search, acceptRequest, cancelSearch, purgeExpired, queueEvents } = require('../services/matchmaking');
-const { announce, closePosts, levelRange, postTitle } = require('../controller/praccBoard');
+const { announce, closePosts, openOriginThread, relayMessage, purgeClosedPosts, levelRange, postTitle } = require('../controller/praccBoard');
 const { getGame } = require('../config/games');
 
 let teamCount = 0;
@@ -77,14 +77,31 @@ test('événements de clôture : demande remplacée et demande expirée', async 
 });
 
 function fakeDiscord() {
-	const log = { threads: [], sent: [], edits: [], archived: [] };
+	const log = { threads: [], sent: [], edits: [], archived: [], threadMessages: [], webhook: [] };
+	const messages = new Map();
+	const channels = {};
 	const message = (id, payload) => ({
 		id,
-		embeds: payload.embeds.map(e => e.toJSON()),
+		embeds: (payload.embeds || []).map(e => e.toJSON()),
 		edit: async p => log.edits.push({ id, ...p }),
 	});
-	const messages = new Map();
-	const forum = {
+	const makeThread = (id, parent) => {
+		const thread = {
+			id,
+			parent,
+			isThread: () => true,
+			messages: { fetch: async mid => messages.get(mid) },
+			send: async p => log.threadMessages.push({ thread: id, ...p }),
+			setArchived: async v => log.archived.push({ thread: id, v }),
+		};
+		channels[id] = thread;
+		return thread;
+	};
+	const withWebhooks = channel => Object.assign(channel, {
+		fetchWebhooks: async () => new Map(),
+		createWebhook: async ({ name }) => ({ name, owner: { id: 'bot' }, send: async p => log.webhook.push({ parent: channel.id, ...p }) }),
+	});
+	const forum = withWebhooks({
 		id: 'forum1',
 		type: ChannelType.GuildForum,
 		availableTags: [{ id: 'tag-val', name: 'Valorant' }, { id: 'tag-scrim', name: 'Scrim' }, { id: 'tag-cs', name: 'Counter-Strike 2' }],
@@ -93,34 +110,52 @@ function fakeDiscord() {
 				log.threads.push(opts);
 				const starter = message('starter1', opts.message);
 				messages.set(starter.id, starter);
-				const thread = {
-					id: 'thread1',
-					fetchStarterMessage: async () => starter,
-					messages: { fetch: async id => messages.get(id) },
-					setArchived: async v => log.archived.push(v),
-				};
-				channels.thread1 = thread;
+				const thread = makeThread('thread1', forum);
+				thread.fetchStarterMessage = async () => starter;
 				return thread;
 			},
 		},
-	};
-	const text = {
+	});
+	const text = withWebhooks({
 		id: 'text1',
 		type: ChannelType.GuildText,
 		send: async payload => {
 			log.sent.push(payload);
 			const m = message('msg1', payload);
+			m.startThread = async opts => {
+				log.threads.push(opts);
+				return makeThread('thread2', text);
+			};
 			messages.set(m.id, m);
 			return m;
 		},
 		messages: { fetch: async id => messages.get(id) },
+	});
+	channels.forum1 = forum;
+	channels.text1 = text;
+	const client = {
+		user: { id: 'bot' },
+		channels: { fetch: async id => channels[id] },
+		guilds: { cache: new Map([['g1', { name: 'Serveur Alpha' }]]) },
 	};
-	const channels = { forum1: forum, text1: text };
-	const client = { channels: { fetch: async id => channels[id] }, guilds: { cache: new Map([['g1', { name: 'Serveur Alpha' }]]) } };
 	return { client, log };
 }
 
-test('tableau : publication sur un forum (tags) et un salon textuel, puis clôture', async () => {
+function chatMessage(threadId, content, extra = {}) {
+	return {
+		guild: { name: 'Serveur Bravo' },
+		author: { bot: false, username: 'kenji', displayAvatarURL: () => 'https://cdn.example/avatar.png' },
+		member: { displayName: 'Kenji' },
+		webhookId: null,
+		channel: { isThread: () => true },
+		channelId: threadId,
+		content,
+		attachments: new Map(),
+		...extra,
+	};
+}
+
+test('tableau : publication sur un forum (tags) et un salon textuel (fil), relais, puis clôture', async () => {
 	await models.GuildSettings.bulkCreate([
 		{ guildId: 'g1', praccChannelId: 'forum1' },
 		{ guildId: 'g2', praccChannelId: 'text1', praccGame: 'valorant' },
@@ -134,15 +169,52 @@ test('tableau : publication sur un forum (tags) et un salon textuel, puis clôtu
 	assert.strictEqual(posted, 2, 'le serveur filtré sur CS2 ne reçoit pas la demande Valorant');
 	assert.strictEqual(log.threads[0].name, '[VAL] Hotel <b> — Scrim BO1 · Diamant');
 	assert.deepStrictEqual(log.threads[0].appliedTags, ['tag-val', 'tag-scrim']);
+	assert.strictEqual(log.threads[1].name, '[VAL] Hotel <b> — Scrim BO1 · Diamant', 'salon textuel : un fil est ouvert sur le message');
 	const embed = log.sent[0].embeds[0].toJSON();
 	assert.match(embed.title, /Hotel <b> cherche un scrim Valorant/);
 	assert.strictEqual(embed.fields.find(f => f.name === 'Serveur').value, 'Serveur Alpha');
 	assert.strictEqual(log.sent[0].components[0].toJSON().components[0].custom_id, `pracc_accept_${entry.id}`);
-	assert.strictEqual(await models.PraccPosts.count({ where: { queueEntryId: entry.id } }), 2);
+	const posts = await models.PraccPosts.findAll({ where: { queueEntryId: entry.id } });
+	assert.deepStrictEqual(posts.map(p => p.threadId).sort(), ['thread1', 'thread2']);
+
+	// relais : écrit dans le fil du forum → recopié dans le fil du salon textuel, sans mentions
+	assert.strictEqual(await relayMessage(client, chatMessage('thread1', 'On est dispo à 21h @everyone')), 1);
+	assert.deepStrictEqual(log.webhook[0], {
+		parent: 'text1', content: 'On est dispo à 21h @everyone', username: 'Kenji · Serveur Bravo',
+		avatarURL: 'https://cdn.example/avatar.png', threadId: 'thread2', allowedMentions: { parse: [] },
+	});
+	assert.strictEqual(await relayMessage(client, chatMessage('thread1', 'bot', { author: { bot: true } })), 0, 'les bots ne sont pas relayés (pas de boucle)');
+	assert.strictEqual(await relayMessage(client, chatMessage('autre-fil', 'hors demande')), 0);
 
 	await closePosts(client, entry.id, 'expired', null);
 	assert.strictEqual(log.edits.length, 2);
 	assert.ok(log.edits.every(e => e.components.length === 0 && /Demande expirée/.test(e.embeds[0].toJSON().description)));
-	assert.deepStrictEqual(log.archived, [true], 'le fil du forum est archivé');
+	assert.deepStrictEqual(log.archived.map(a => a.thread).sort(), ['thread1', 'thread2'], 'fils archivés');
 	assert.strictEqual(await models.PraccPosts.count(), 0);
+});
+
+test('fil d\'origine pour une équipe sans salon pracc, relais conservé 24 h après un match', async () => {
+	const { client, log } = fakeDiscord();
+	const india = await makeTeam('India');
+	const { entry } = await search({ ...params, team: india, level: 2, announce: false, guildId: 'g-sans-salon', channelId: 'origin-chan' });
+	await announce(client, entry, india);
+	const reply = { id: 'reply1', channelId: 'origin-chan', startThread: async () => ({ id: 'origin-thread', send: async () => undefined }) };
+	const origin = await openOriginThread(reply, entry, india);
+	assert.strictEqual(origin.kind, 'origin');
+
+	// un serveur qui a déjà un salon pracc pour ce jeu n'a pas besoin de fil d'origine
+	const g1Entry = { ...entry.get({ plain: true }), guildId: 'g1' };
+	assert.strictEqual(await openOriginThread(reply, g1Entry, india), null);
+
+	const juliet = await makeTeam('Juliet');
+	const match = await acceptRequest({ entryId: entry.id, team: juliet, channelId: 'thread2', guildId: 'g2' });
+	await closePosts(client, entry.id, 'matched', match);
+	const kept = await models.PraccPosts.findAll({ where: { queueEntryId: entry.id } });
+	assert.strictEqual(kept.length, 3);
+	assert.ok(kept.every(p => p.closedAt), 'posts marqués clôturés mais conservés pour le relais');
+	assert.ok(log.threadMessages.some(m => /Adversaire trouvé : India vs Juliet/.test(m.content)));
+	assert.strictEqual(log.archived.length, 0, 'fils non archivés après un match');
+	assert.strictEqual(await purgeClosedPosts(), 0);
+	await models.PraccPosts.update({ closedAt: new Date(Date.now() - 25 * 3600 * 1000) }, { where: { queueEntryId: entry.id } });
+	assert.strictEqual(await purgeClosedPosts(), 3);
 });

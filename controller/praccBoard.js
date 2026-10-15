@@ -1,12 +1,16 @@
-const { ActionRowBuilder, ButtonBuilder, ButtonStyle, ChannelType, EmbedBuilder, PermissionsBitField, StringSelectMenuBuilder, userMention } = require('discord.js');
+const { ActionRowBuilder, ButtonBuilder, ButtonStyle, ChannelType, EmbedBuilder, Events, PermissionsBitField, StringSelectMenuBuilder, userMention } = require('discord.js');
+const { Op } = require('sequelize');
 const { models } = require('../models');
 const { GAMES, getGame, MATCH_TYPES } = require('../config/games');
 const { queueEvents, acceptRequest, eligibleTeams } = require('../services/matchmaking');
 
 /**
  * Tableau des demandes de pracc : chaque serveur peut choisir un salon (forum recommandé, ou textuel)
- * où apparaissent les demandes en attente de TOUS les serveurs. Les joueurs discutent dans le post
- * et un capitaine peut accepter : le match et le hub sont créés aussitôt.
+ * où apparaissent les demandes en attente de TOUS les serveurs. Chaque demande a un fil de discussion
+ * par serveur (le post du forum, ou un fil ouvert sur le message), plus un fil sous la commande
+ * /match chercher de l'équipe qui cherche. Les messages écrits dans l'un de ces fils sont relayés
+ * dans tous les autres : les équipes discutent même si elles ne sont pas sur le même serveur.
+ * Un capitaine peut accepter : le match et le hub sont créés aussitôt.
  */
 
 const FORUM_TAGS = [...Object.values(GAMES).map(g => g.name), 'Scrim', 'Match officiel'];
@@ -16,7 +20,15 @@ const CLOSED_TEXT = {
 	cancelled: () => '🛑 Demande annulée',
 	replaced: () => '🔁 Remplacée par une nouvelle demande',
 };
-const REQUIRED_PERMS = [PermissionsBitField.Flags.ViewChannel, PermissionsBitField.Flags.SendMessages, PermissionsBitField.Flags.EmbedLinks];
+const REQUIRED_PERMS = [
+	PermissionsBitField.Flags.ViewChannel,
+	PermissionsBitField.Flags.SendMessages,
+	PermissionsBitField.Flags.EmbedLinks,
+	PermissionsBitField.Flags.SendMessagesInThreads,
+];
+const RELAY_WEBHOOK_NAME = 'PraccHub Relay';
+// Après un match trouvé, le relais reste ouvert pour s'organiser (codes de lobby, horaires…)
+const RELAY_AFTER_MATCH_MS = 24 * 60 * 60 * 1000;
 
 /* ---------- mise en forme (pure) ---------- */
 
@@ -47,7 +59,7 @@ function requestEmbed(entry, team, { origin } = {}) {
 			{ name: 'Serveur', value: origin || '—', inline: true },
 			{ name: `Joueurs (${members.length})`, value: members.map(m => m.name).join(', ').slice(0, 1000) || '—' },
 		)
-		.setFooter({ text: 'PraccHub • Discute ici, puis « Accepter le pracc » crée le match et le hub' });
+		.setFooter({ text: 'PraccHub • Discute dans le fil (relayé sur tous les serveurs), puis « Accepter le pracc » crée le match et le hub' });
 }
 
 function closedEmbed(original, reason, match) {
@@ -80,7 +92,21 @@ async function postTo(channel, entry, team, origin) {
 		return { channelId: channel.id, threadId: thread.id, messageId: starter.id };
 	}
 	const message = await channel.send(payload);
-	return { channelId: channel.id, threadId: null, messageId: message.id };
+	const thread = await message.startThread({ name: postTitle(entry, team), autoArchiveDuration: 1440 }).catch(() => null);
+	return { channelId: channel.id, threadId: thread ? thread.id : null, messageId: message.id };
+}
+
+/**
+ * Fil de discussion sous la réponse à /match chercher, pour que l'équipe qui cherche voie les réponses
+ * même si son serveur n'a pas de salon pracc (sinon elle les voit déjà dans son propre salon pracc).
+ */
+async function openOriginThread(message, entry, team) {
+	const board = await models.GuildSettings.findByPk(entry.guildId);
+	if (board && board.praccChannelId && (!board.praccGame || board.praccGame === entry.game)) return null;
+	if (!(await models.QueueEntries.findByPk(entry.id))) return null;
+	const thread = await message.startThread({ name: `💬 ${postTitle(entry, team)}`.slice(0, 100), autoArchiveDuration: 1440 });
+	await thread.send({ content: 'Les réponses des autres serveurs à ta demande arrivent ici, et ce que tu écris est relayé chez eux.', allowedMentions: { parse: [] } });
+	return models.PraccPosts.create({ queueEntryId: entry.id, guildId: entry.guildId, channelId: message.channelId, messageId: message.id, threadId: thread.id, kind: 'origin' });
 }
 
 async function announce(client, entry, team, onlyGuildId = null) {
@@ -102,26 +128,105 @@ async function announce(client, entry, team, onlyGuildId = null) {
 	return posted;
 }
 
+async function closePost(client, post, reason, match) {
+	const text = (CLOSED_TEXT[reason] || CLOSED_TEXT.cancelled)(match);
+	const thread = post.threadId ? await client.channels.fetch(post.threadId).catch(() => null) : null;
+	if (post.kind === 'board') {
+		const holder = await client.channels.fetch(post.channelId);
+		// forum : le message d'annonce est dans le fil ; salon textuel : dans le salon
+		const source = holder.type === ChannelType.GuildForum ? thread : holder;
+		const message = await source.messages.fetch(post.messageId);
+		await message.edit({ embeds: [closedEmbed(message.embeds[0], reason, match)], components: [] });
+	}
+	if (!thread) return;
+	if (reason === 'matched') {
+		await thread.send({ content: `**${text}**\nCe fil reste relayé 24 h pour vous organiser.`, allowedMentions: { parse: [] } }).catch(() => undefined);
+	}
+	else {
+		await thread.send({ content: `**${text}**`, allowedMentions: { parse: [] } }).catch(() => undefined);
+		await thread.setArchived(true).catch(() => undefined);
+	}
+}
+
 async function closePosts(client, entryId, reason, match) {
-	const posts = await models.PraccPosts.findAll({ where: { queueEntryId: entryId } });
+	const posts = await models.PraccPosts.findAll({ where: { queueEntryId: entryId, closedAt: null } });
 	for (const post of posts) {
 		try {
-			const channel = await client.channels.fetch(post.threadId || post.channelId);
-			const message = await channel.messages.fetch(post.messageId);
-			await message.edit({ embeds: [closedEmbed(message.embeds[0], reason, match)], components: [] });
-			// Le fil reste ouvert quand un match est trouvé (les équipes peuvent y discuter)
-			if (post.threadId && reason !== 'matched') await channel.setArchived(true).catch(() => undefined);
+			await closePost(client, post, reason, match);
 		}
 		catch (error) {
 			console.error(`Pracc : mise à jour impossible du post ${post.messageId} :`, error.message);
 		}
 	}
-	await models.PraccPosts.destroy({ where: { queueEntryId: entryId } });
+	if (reason === 'matched') await models.PraccPosts.update({ closedAt: new Date() }, { where: { queueEntryId: entryId } });
+	else await models.PraccPosts.destroy({ where: { queueEntryId: entryId } });
+}
+
+function purgeClosedPosts() {
+	return models.PraccPosts.destroy({ where: { closedAt: { [Op.lt]: new Date(Date.now() - RELAY_AFTER_MATCH_MS) } } });
+}
+
+/* ---------- relais des discussions entre serveurs ---------- */
+
+const webhookCache = new Map();
+
+async function relayWebhook(client, parent) {
+	if (webhookCache.has(parent.id)) return webhookCache.get(parent.id);
+	let webhook = null;
+	try {
+		const hooks = await parent.fetchWebhooks();
+		webhook = [...hooks.values()].find(h => h.name === RELAY_WEBHOOK_NAME && h.owner && h.owner.id === client.user.id)
+			|| await parent.createWebhook({ name: RELAY_WEBHOOK_NAME });
+	}
+	catch {
+		// Permission « Gérer les webhooks » absente : repli sur un message du bot
+		webhook = null;
+	}
+	webhookCache.set(parent.id, webhook);
+	return webhook;
+}
+
+function relayContent(message) {
+	const files = [...message.attachments.values()].map(a => a.url);
+	return [message.content, ...files].filter(Boolean).join('\n').slice(0, 1900);
+}
+
+/** Recopie un message écrit dans un fil de demande vers les fils des autres serveurs. */
+async function relayMessage(client, message) {
+	if (!message.guild || message.author.bot || message.webhookId || !message.channel.isThread()) return 0;
+	const source = await models.PraccPosts.findOne({ where: { threadId: message.channelId } });
+	if (!source) return 0;
+	const content = relayContent(message);
+	if (!content) return 0;
+	const targets = await models.PraccPosts.findAll({ where: { queueEntryId: source.queueEntryId, threadId: { [Op.ne]: message.channelId } } });
+	const author = (message.member && message.member.displayName) || message.author.globalName || message.author.username;
+	const username = `${author} · ${message.guild.name}`.slice(0, 80);
+	let relayed = 0;
+	for (const target of targets) {
+		if (!target.threadId) continue;
+		try {
+			const thread = await client.channels.fetch(target.threadId);
+			const webhook = thread.parent ? await relayWebhook(client, thread.parent) : null;
+			if (webhook) {
+				await webhook.send({ content, username, avatarURL: message.author.displayAvatarURL(), threadId: thread.id, allowedMentions: { parse: [] } });
+			}
+			else {
+				await thread.send({ content: `**${username}** : ${content}`.slice(0, 2000), allowedMentions: { parse: [] } });
+			}
+			relayed++;
+		}
+		catch (error) {
+			console.error(`Pracc : relais impossible vers ${target.threadId} :`, error.message);
+		}
+	}
+	return relayed;
 }
 
 function registerPraccBoard(client) {
 	queueEvents.on('queued', ({ entry, team }) => announce(client, entry, team).catch(console.error));
 	queueEvents.on('closed', ({ entryId, reason, match }) => closePosts(client, entryId, reason, match).catch(console.error));
+	client.on(Events.MessageCreate, message => relayMessage(client, message).catch(console.error));
+	setInterval(() => purgeClosedPosts().catch(console.error), 60 * 60 * 1000).unref();
 }
 
 /* ---------- configuration (/pracc) ---------- */
@@ -135,7 +240,7 @@ async function ensureForumTags(channel) {
 
 function missingPermissions(channel, me) {
 	const perms = channel.permissionsFor(me);
-	const required = isForum(channel) ? [...REQUIRED_PERMS, PermissionsBitField.Flags.SendMessagesInThreads] : REQUIRED_PERMS;
+	const required = isForum(channel) ? REQUIRED_PERMS : [...REQUIRED_PERMS, PermissionsBitField.Flags.CreatePublicThreads];
 	return required.filter(flag => !perms || !perms.has(flag)).map(flag => new PermissionsBitField(flag).toArray()[0]);
 }
 
@@ -147,7 +252,7 @@ async function configureBoard(interaction, channel, gameId) {
 	await models.GuildSettings.upsert({ guildId: interaction.guildId, praccChannelId: channel.id, praccGame: gameId || null });
 
 	const scope = gameId ? getGame(gameId).name : 'tous les jeux';
-	const intro = `**PraccHub — demandes de pracc (${scope})**\nLes demandes des équipes de tous les serveurs PraccHub apparaissent ici.\n• Pour publier : \`/match chercher\` (ta demande est diffusée tant qu'aucun adversaire n'est trouvé).\n• Pour répondre : discute dans le post, puis clique sur **Accepter le pracc** avec ton équipe (\`/equipe creer\`).`;
+	const intro = `**PraccHub — demandes de pracc (${scope})**\nLes demandes des équipes de tous les serveurs PraccHub apparaissent ici.\n• Pour publier : \`/match chercher\` (ta demande est diffusée tant qu'aucun adversaire n'est trouvé).\n• Pour répondre : écris dans le fil de la demande (c'est relayé aux autres serveurs), puis clique sur **Accepter le pracc** avec ton équipe (\`/equipe creer\`).`;
 	let tagsOk = true;
 	if (isForum(channel)) {
 		tagsOk = await ensureForumTags(channel);
@@ -214,6 +319,9 @@ module.exports = {
 	onTeamPicked,
 	announce,
 	closePosts,
+	openOriginThread,
+	relayMessage,
+	purgeClosedPosts,
 	levelRange,
 	postTitle,
 	requestEmbed,

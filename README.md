@@ -28,12 +28,17 @@ Pour que les équipes se trouvent même quand elles sont peu nombreuses, chaque 
 
 1. Un admin (permission « Gérer le serveur ») lance `/pracc salon salon:<forum ou salon textuel> [jeu]`. Un **forum** est recommandé : chaque demande devient un post, avec des tags par jeu et par type.
 2. Chaque `/match chercher` sans adversaire immédiat est publié sur ces salons (désactivable avec `publier:false`). Les demandes déjà ouvertes sont publiées dès la configuration.
-3. Les joueurs discutent dans le post. Un capitaine clique sur **Accepter le pracc**, choisit son équipe (même jeu, même taille), et le match est créé aussitôt, aux conditions de la demande, sans contrôle de l'écart de niveau. Le check-in et le hub arrivent dans le salon de chaque équipe.
-4. Quand la demande est acceptée, annulée, expirée ou remplacée, les posts sont mis à jour, et les fils des demandes non abouties sont archivés.
+3. **Discussion entre serveurs** : chaque demande a un fil par serveur (le post du forum, ou un fil ouvert sur le message en salon textuel). L'équipe qui cherche a aussi un fil sous sa commande `/match chercher` quand son serveur n'a pas de salon pracc. Tout message écrit dans l'un de ces fils est **relayé dans tous les autres**, au nom de son auteur et avec le nom de son serveur. Les mentions sont neutralisées et les pièces jointes passent sous forme de lien. Les modifications et suppressions ne sont pas relayées.
+4. Un capitaine clique sur **Accepter le pracc** et choisit son équipe (même jeu, même taille). Le match est créé aussitôt, aux conditions de la demande, sans contrôle de l'écart de niveau. Le check-in et le hub arrivent dans le salon de chaque équipe, et le relais reste actif 24 h pour s'organiser.
+5. Quand la demande est annulée, expirée ou remplacée, les posts sont mis à jour et les fils archivés.
 
 `/pracc voir` affiche la configuration, et `/pracc retirer` désactive le salon.
 
-Permissions du bot dans le salon : voir le salon, envoyer des messages, intégrer des liens, et pour un forum envoyer des messages dans les fils. « Gérer les salons » est optionnelle : elle sert à créer les tags du forum.
+Permissions du bot dans le salon : voir le salon, envoyer des messages, intégrer des liens, envoyer des messages dans les fils, et en salon textuel créer des fils publics. Deux permissions sont optionnelles :
+- « Gérer les webhooks » : les messages relayés apparaissent avec le nom et l'avatar de leur auteur, sinon le bot les reposte en citant l'auteur.
+- « Gérer les salons » : elle sert à créer les tags du forum.
+
+Le relais lit le contenu des messages : active **Message Content Intent** dans le Discord Developer Portal (onglet Bot). Au-delà de 100 serveurs, Discord exige une vérification du bot pour cet intent privilégié.
 
 `/match annuler` retire l'équipe de la file. `/match hub` redonne les liens vers tes matchs en cours.
 

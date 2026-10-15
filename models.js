@@ -123,8 +123,12 @@ const PraccPosts = sequelize.define('pracc_posts', {
 	guildId: { type: Sequelize.STRING },
 	channelId: { type: Sequelize.STRING, allowNull: false },
 	messageId: { type: Sequelize.STRING, allowNull: false },
-	// forum : le post est un fil
+	// fil de discussion du post (forum : le post lui-même ; salon textuel : fil ouvert sur le message)
 	threadId: { type: Sequelize.STRING },
+	// board : annonce sur un salon pracc ; origin : fil sous la commande /match chercher de l'équipe
+	kind: { type: Sequelize.STRING, allowNull: false, defaultValue: 'board' },
+	// renseigné quand la demande est acceptée : le relais reste actif 24 h pour organiser le match
+	closedAt: { type: Sequelize.DATE },
 });
 
 Guilds.hasMany(Tournaments, { onDelete: 'CASCADE' });
