@@ -1,0 +1,144 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<title>PraccHub — Spec des transitions</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@500;600;700&amp;family=IBM+Plex+Sans:wght@400;500;600&amp;family=JetBrains+Mono:wght@500;700&amp;display=swap">
+<style>
+body{margin:0;background:#0A0C11}
+a{color:#9CC6FF}a:hover{color:#C9DFFF}
+.mr{font-family:'IBM Plex Sans',system-ui,sans-serif;color:#ECEEF3}
+.mr h3{margin:0;font-family:'Chakra Petch',sans-serif;font-size:20px;font-weight:700}
+.mr p{margin:0;font-size:13px;line-height:1.5;color:#A3ABBA}
+.spec{font-family:'JetBrains Mono',monospace;font-size:11px;line-height:1.7;color:#C4C9D3}
+.spec b{color:#ECEEF3;font-weight:700}
+.stage{position:relative;height:190px;border-radius:12px;background:#0A0C11;border:1px solid #2A303C;overflow:hidden;display:flex;align-items:center;justify-content:center}
+.lab{position:absolute;left:10px;top:8px;font-family:'JetBrains Mono',monospace;font-size:10px;letter-spacing:.08em;text-transform:uppercase;color:#8891A1}
+.card{width:110px;height:150px;border-radius:10px;border:1px solid #2A303C;background:hsl(140 32% 24%);position:relative;overflow:hidden}
+.card::after{content:'';position:absolute;inset:0;background-image:repeating-radial-gradient(circle at 28% 115%,rgba(255,255,255,.08) 0 1px,transparent 1px 13px),linear-gradient(180deg,rgba(10,12,17,0) 35%,rgba(10,12,17,.92))}
+.card span{position:absolute;left:10px;bottom:10px;z-index:1;font-family:'Chakra Petch',sans-serif;font-weight:700;font-size:16px}
+.d1 .bar{position:absolute;left:0;top:0;bottom:0;width:4px;background:#4C9DFF;animation:barSwap 4s infinite steps(1)}
+.d1 .sw{position:absolute;inset:0;background:linear-gradient(90deg,rgba(76,157,255,.22),transparent 70%);animation:sweepLoop 4s var(--e) infinite}
+.d1 .tt{position:relative;font-family:'Chakra Petch',sans-serif;font-weight:700;font-size:20px;animation:riseLoop 2s var(--e) infinite}
+.d2 .card{animation:selLoop 2.4s var(--e) infinite}
+.d3 .card{animation:banLoop 3s ease infinite}
+.d3 .st{position:absolute;left:50%;top:44%;z-index:2;padding:4px 10px;border:2px solid #FF5A67;border-radius:5px;font-family:'Chakra Petch',sans-serif;font-weight:700;font-size:12px;letter-spacing:.14em;color:#FF8A94;background:rgba(10,12,17,.75);animation:stampLoop 3s var(--e) infinite}
+.d4 .hero{width:90px;height:110px;border-radius:12px;border:1px solid #2A303C;background:#181C25;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:6px;position:relative;overflow:hidden;animation:banHero 3s ease infinite}
+.av{width:48px;height:48px;border-radius:9px;display:flex;align-items:center;justify-content:center;font-family:'Chakra Petch',sans-serif;font-weight:700;color:#fff;background:hsl(280 42% 30%)}
+.d4 .x1,.d4 .x2{position:absolute;left:12%;right:12%;top:50%;height:3px;border-radius:2px;background:#FF5A67;z-index:2}
+.d4 .x1{transform:rotate(45deg);animation:slashLoop 3s var(--e) infinite}
+.d4 .x2{transform:rotate(-45deg);animation:slashLoop2 3s var(--e) infinite}
+.d5 .card{border-color:#4C9DFF;animation:pickLoop 2.6s var(--e) infinite}
+.d5 .tag{position:absolute;top:8px;right:8px;z-index:2;padding:3px 7px;border-radius:5px;font-family:'JetBrains Mono',monospace;font-size:10px;font-weight:700;background:#4C9DFF;color:#0A0C11;animation:popLoop 2.6s var(--e) infinite}
+.d6 .slot{width:78%;display:flex;align-items:center;gap:10px;min-height:58px;padding:6px 10px;border-radius:10px;background:#181C25;position:relative;overflow:hidden}
+.d6 .slot i{position:absolute;left:0;top:0;bottom:0;width:3px;background:#F2A23A;animation:barLoop 2.6s var(--e) infinite}
+.d6 .in{display:flex;align-items:center;gap:10px;animation:slotLoop 2.6s var(--e) infinite}
+.d6 .in b{font-family:'Chakra Petch',sans-serif;font-size:16px}
+.d6 .av{background:hsl(30 42% 30%);width:40px;height:40px}
+.d7 .bg{position:absolute;inset:16px;display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px;animation:dimLoop 3s ease infinite}
+.d7 .bg span{border-radius:8px;background:#20252F}
+.d7 .sheet{position:relative;z-index:2;width:72%;padding:14px;border-radius:12px;background:#12151C;border:1px solid #F2A23A;box-shadow:0 0 0 5px rgba(242,162,58,.16);display:flex;gap:8px;animation:sheetLoop 3s var(--e) infinite}
+.d7 .sheet span{flex:1;height:44px;border-radius:8px;background:#181C25;border:1px solid #2A303C;display:flex;align-items:center;justify-content:center;font-family:'Chakra Petch',sans-serif;font-weight:700;font-size:14px}
+.d8 .row{display:flex;gap:8px}
+.d8 .row .card{width:84px;height:110px}
+.d8 .row .card:nth-child(1){animation:revealLoop 3.2s var(--e) infinite}
+.d8 .row .card:nth-child(2){animation:revealLoop2 3.2s var(--e) infinite;background:hsl(255 32% 24%)}
+.d8 .row .card:nth-child(3){animation:revealLoop3 3.2s var(--e) infinite;background:hsl(15 32% 24%)}
+.curve{width:100%;height:120px}
+
+@keyframes barSwap{0%{background:#4C9DFF}50%{background:#F2A23A}}
+@keyframes sweepLoop{0%{transform:translateX(-100%);background:linear-gradient(90deg,rgba(76,157,255,.22),transparent 70%)}13%,49%{transform:none;background:linear-gradient(90deg,rgba(76,157,255,.22),transparent 70%)}50%{transform:translateX(-100%);background:linear-gradient(90deg,rgba(242,162,58,.22),transparent 70%)}63%,100%{transform:none;background:linear-gradient(90deg,rgba(242,162,58,.22),transparent 70%)}}
+@keyframes riseLoop{0%{transform:translateY(14px);opacity:0}20%,90%{transform:none;opacity:1}100%{opacity:0}}
+@keyframes selLoop{0%,15%{transform:none;box-shadow:none;border-color:#2A303C}30%,45%{transform:translateY(-4px);border-color:#46506A;box-shadow:none}60%,90%{transform:translateY(-6px);border-color:#4C9DFF;box-shadow:0 0 0 2px #4C9DFF,0 16px 40px -14px #4C9DFF}100%{transform:none;box-shadow:none}}
+@keyframes banLoop{0%,20%{filter:none}35%,90%{filter:grayscale(1) brightness(.55)}100%{filter:none}}
+@keyframes stampLoop{0%,20%{transform:translate(-50%,-50%) rotate(-8deg) scale(2.2);opacity:0}30%{transform:translate(-50%,-50%) rotate(-8deg) scale(.94);opacity:1}34%,90%{transform:translate(-50%,-50%) rotate(-8deg) scale(1);opacity:1}100%{opacity:0;transform:translate(-50%,-50%) rotate(-8deg) scale(1)}}
+@keyframes banHero{0%,20%{filter:none}35%,90%{filter:grayscale(1) brightness(.55)}100%{filter:none}}
+@keyframes slashLoop{0%,20%{clip-path:inset(0 100% 0 0)}30%,90%{clip-path:inset(0 0 0 0)}100%{clip-path:inset(0 100% 0 0)}}
+@keyframes slashLoop2{0%,23%{clip-path:inset(0 100% 0 0)}33%,90%{clip-path:inset(0 0 0 0)}100%{clip-path:inset(0 100% 0 0)}}
+@keyframes pickLoop{0%,15%{box-shadow:0 0 0 0 rgba(76,157,255,0);border-color:#2A303C}20%{box-shadow:0 0 0 2px #4C9DFF,0 0 0 0 rgba(76,157,255,.9)}45%,90%{box-shadow:0 0 0 2px #4C9DFF,0 0 0 18px rgba(76,157,255,0);border-color:#4C9DFF}100%{box-shadow:none}}
+@keyframes popLoop{0%,18%{transform:scale(.6);opacity:0}30%,90%{transform:none;opacity:1}100%{opacity:0}}
+@keyframes slotLoop{0%,10%{transform:translateX(-24px);opacity:0;filter:blur(4px)}26%,90%{transform:none;opacity:1;filter:none}100%{opacity:0}}
+@keyframes barLoop{0%,10%{transform:scaleY(0)}24%,90%{transform:none}100%{transform:scaleY(0)}}
+@keyframes dimLoop{0%,15%{opacity:1;filter:none}30%,88%{opacity:.35;filter:blur(1px)}100%{opacity:1;filter:none}}
+@keyframes sheetLoop{0%,15%{transform:translateY(16px);opacity:0}28%,88%{transform:none;opacity:1}100%{transform:translateY(8px);opacity:0}}
+@keyframes revealLoop{0%,10%{transform:translateY(20px);opacity:0}27%,90%{transform:none;opacity:1}100%{opacity:0}}
+@keyframes revealLoop2{0%,14%{transform:translateY(20px);opacity:0}31%,90%{transform:none;opacity:1}100%{opacity:0}}
+@keyframes revealLoop3{0%,18%{transform:translateY(20px);opacity:0}35%,90%{transform:none;opacity:1}100%{opacity:0}}
+</style>
+</head>
+<body>
+<div class="mr" style="width: 1440px; height: 1080px; box-sizing: border-box; padding: 48px; background: #0A0C11; display: flex; flex-direction: column; gap: 28px; --e: cubic-bezier(.2,.8,.2,1)">
+  <div style="display: flex; flex-wrap: wrap; align-items: flex-end; justify-content: space-between; gap: 24px">
+    <div style="display: flex; flex-direction: column; gap: 8px">
+      <span class="spec" style="letter-spacing: .1em; text-transform: uppercase; color: #E5484D">PraccHub · Motion</span>
+      <h1 style="margin: 0; font-family: 'Chakra Petch', sans-serif; font-size: 44px; font-weight: 700; line-height: 1">Transitions du pick &amp; ban</h1>
+      <p style="max-width: 640px">Chaque étape du veto a sa propre signature visuelle. Toutes les durées sont en CSS pur et multipliées par une variable <b style="color: #ECEEF3">--m</b> (1 = normal, 2.6 = ralenti de démo). Tout est coupé si l'utilisateur a activé « réduire les animations ».</p>
+    </div>
+    <div style="display: flex; gap: 12px">
+      <div style="padding: 14px 16px; border-radius: 12px; background: #12151C; border: 1px solid #2A303C; display: flex; flex-direction: column; gap: 4px">
+        <span class="spec" style="color: #8891A1">EASING PRINCIPAL</span>
+        <span class="spec"><b>cubic-bezier(.2, .8, .2, 1)</b></span>
+        <span class="spec">sortie rapide, atterrissage doux</span>
+      </div>
+      <div style="padding: 14px 16px; border-radius: 12px; background: #12151C; border: 1px solid #2A303C; display: flex; flex-direction: column; gap: 4px">
+        <span class="spec" style="color: #8891A1">ÉCHELLE DE DURÉES</span>
+        <span class="spec"><b>120–180 ms</b> survol, sélection</span>
+        <span class="spec"><b>320–460 ms</b> ban, slot, panneau</span>
+        <span class="spec"><b>520–720 ms</b> changement de tour, lock-in</span>
+      </div>
+    </div>
+  </div>
+
+  <div style="display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 20px">
+    <div style="display: flex; flex-direction: column; gap: 10px">
+      <div class="stage d1" style="justify-content: flex-start; padding-left: 28px"><span class="lab">01</span><div class="sw"></div><div class="bar"></div><span class="tt">Night Owls bannit une carte</span></div>
+      <h3>Changement de tour</h3>
+      <p>Un balayage à la couleur de l'équipe traverse la bannière, le titre remonte. Le chrono repart à 30 s.</p>
+      <span class="spec"><b>520 ms</b> balayage · <b>420 ms</b> titre<br>déclencheur : nouvelle étape</span>
+    </div>
+    <div style="display: flex; flex-direction: column; gap: 10px">
+      <div class="stage d2"><span class="lab">02</span><div class="card"><span>Haven</span></div></div>
+      <h3>Survol puis sélection</h3>
+      <p>La carte se soulève au survol, puis s'entoure de la couleur de l'équipe une fois sélectionnée. Rien n'est validé tant que le capitaine n'a pas confirmé.</p>
+      <span class="spec"><b>180 ms</b> lift −4 px · sélection −6 px + halo<br>déclencheur : clic</span>
+    </div>
+    <div style="display: flex; flex-direction: column; gap: 10px">
+      <div class="stage d3"><span class="lab">03</span><div class="card"><span>Lotus</span></div><span class="st">BANNI · NO</span></div>
+      <h3>Ban de carte</h3>
+      <p>Un tampon tombe sur la carte avec un léger rebond, et la carte passe en noir et blanc.</p>
+      <span class="spec"><b>400 ms</b> tampon (scale 2.2 → 0.94 → 1)<br><b>300 ms</b> désaturation</span>
+    </div>
+    <div style="display: flex; flex-direction: column; gap: 10px">
+      <div class="stage d4"><span class="lab">04</span><div class="hero"><span class="av">AH</span><span style="font-size: 12px; font-weight: 600">Ahri</span><span class="x1"></span><span class="x2"></span></div></div>
+      <h3>Ban de personnage</h3>
+      <p>Deux traits rouges tracent une croix, le second avec un léger décalage. Le slot de ban de l'équipe se remplit en même temps.</p>
+      <span class="spec"><b>300 ms</b> par trait · décalage <b>90 ms</b><br>slot : <b>380 ms</b> tampon</span>
+    </div>
+    <div style="display: flex; flex-direction: column; gap: 10px">
+      <div class="stage d5"><span class="lab">05</span><div class="card"><span>Abyss</span><span class="tag">PICK NO</span></div></div>
+      <h3>Pick / lock-in</h3>
+      <p>Une onde part de la carte choisie et s'efface, puis l'étiquette du pick apparaît.</p>
+      <span class="spec"><b>720 ms</b> onde (0 → 18 px, fondu)<br><b>320 ms</b> étiquette</span>
+    </div>
+    <div style="display: flex; flex-direction: column; gap: 10px">
+      <div class="stage d6"><span class="lab">06</span><div class="slot"><i></i><span style="font-size: 12px; color: #A3ABBA; width: 48px">Les_3</span><div class="in"><span class="av">JI</span><b>Jinx</b></div></div></div>
+      <h3>Remplissage d'un slot</h3>
+      <p>Pendant la sélection, le personnage clignote dans le prochain slot libre. Une fois verrouillé, il glisse en place et un liseré se dessine sur le côté.</p>
+      <span class="spec"><b>420 ms</b> glissé + flou 4 px → 0<br><b>1200 ms</b> clignotement en attente</span>
+    </div>
+    <div style="display: flex; flex-direction: column; gap: 10px">
+      <div class="stage d7"><span class="lab">07</span><div class="bg"><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span></div><div class="sheet"><span>Attaque</span><span>Défense</span></div></div>
+      <h3>Choix du côté</h3>
+      <p>Le pool s'estompe et se floute, et un panneau de choix monte au centre. Seul le capitaine concerné peut cliquer.</p>
+      <span class="spec"><b>360 ms</b> panneau · <b>300 ms</b> estompage<br>Valorant : Attaque / Défense · CS2 : CT / T</span>
+    </div>
+    <div style="display: flex; flex-direction: column; gap: 10px">
+      <div class="stage d8"><span class="lab">08</span><div class="row"><div class="card"><span>Haven</span></div><div class="card"><span>Abyss</span></div><div class="card"><span>Sunset</span></div></div></div>
+      <h3>Fin du veto</h3>
+      <p>Les cartes de la série (ou les deux compositions) apparaissent l'une après l'autre, puis le bloc « Bon match ! GL HF » arrive.</p>
+      <span class="spec"><b>560 ms</b> par carte · décalage <b>110 ms</b><br>la carte décisive se retourne en <b>620 ms</b></span>
+    </div>
+  </div>
+</div>
+</body>
+</html>

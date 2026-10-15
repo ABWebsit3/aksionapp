@@ -11,7 +11,8 @@
     "register": "node deploy-commands.js",
     "dev": "nodemon app.js",
     "test": "node --test test/*.test.js",
-    "lint": "eslint ."
+    "lint": "eslint .",
+    "catalog": "node scripts/sync-catalog.js"
   },
   "author": "Alexandre Bailot",
   "license": "MIT",
@@ -30,6 +31,7 @@
   },
   "devDependencies": {
     "eslint": "^8.42.0",
-    "nodemon": "^2.0.15"
+    "nodemon": "^2.0.15",
+    "sharp": "^0.34.5"
   }
 }

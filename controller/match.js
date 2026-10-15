@@ -2,6 +2,7 @@ const { ActionRowBuilder, ButtonBuilder, ButtonStyle, EmbedBuilder, userMention 
 const { getGame, MATCH_TYPES } = require('../config/games');
 const { matchEvents, getMatch, teamOf } = require('../services/matchService');
 const { hubUrl } = require('../services/hubToken');
+const { getCatalog } = require('../services/catalog');
 
 const COLORS = { checkin: 0xff4655, veto: 0xf5a83f, live: 0x3fa9f5, finished: 0x2ecc71, disputed: 0xe67e22, cancelled: 0x7f8c8d };
 
@@ -18,17 +19,24 @@ function hubButtonRow(matchId) {
 function vetoSummary(match) {
 	const { veto, teams } = match;
 	if (!veto) return null;
-	if (veto.mode === 'maps') {
-		return veto.maps.map((m, i) => {
-			const origin = m.pickedBy ? `pick ${teams[m.pickedBy].name}` : 'décisive';
-			const side = m.side ? ` — ${teams[m.side.team].name} : ${m.side.value}` : '';
-			return `**Map ${i + 1}** : ${m.map} (${origin})${side}`;
+	const names = Object.fromEntries(getCatalog(match.game).items.map(i => [i.id, i.name]));
+	const nameOf = id => names[id] || id;
+	if (veto.kind === 'maps') {
+		const maps = veto.log.filter(e => e.t === 'pick' || e.t === 'decider');
+		return maps.map((e, i) => {
+			const side = veto.log.find(x => x.t === 'side' && x.mapId === e.id);
+			const origin = e.t === 'decider' ? 'décisive' : `pick ${teams[e.team].name}`;
+			return `**Map ${i + 1}** : ${nameOf(e.id)} (${origin})${side ? ` — ${teams[side.team].name} : ${side.side}` : ''}`;
 		}).join('\n');
 	}
-	const lines = [];
-	if (veto.choices.side) lines.push(`**Côté** : ${teams[veto.choices.side.team].name} → ${veto.choices.side.value}`);
-	if (veto.choices.extra) lines.push(`**${veto.extraChoice.label}** : ${teams[veto.choices.extra.team].name} → ${veto.choices.extra.value}`);
-	return lines.join('\n');
+	if (veto.kind === 'draft') {
+		return ['A', 'B'].map(key => {
+			const picks = veto.log.filter(e => e.t === 'pick' && e.team === key).map(e => nameOf(e.id));
+			return `**${teams[key].name}** : ${picks.join(', ')}`;
+		}).join('\n');
+	}
+	const side = veto.log.find(e => e.t === 'side');
+	return side ? `**Côté** : ${teams[side.team].name} → ${side.side}` : null;
 }
 
 /** @param keys équipes à mentionner (['A'], ['B'] ou ['A', 'B'] si elles partagent le salon) */
@@ -52,7 +60,7 @@ function buildMessage(match, keys) {
 		break;
 	}
 	case 'veto':
-		content = `${mentions}\n✅ Tout le monde est là ! Le pick & ban commence sur le hub (capitaines).`;
+		content = `${mentions}\n✅ Tout le monde est là ! Pile ou face gagné par **${A.name}**. Le pick & ban commence sur le hub (capitaines).`;
 		break;
 	case 'live':
 		content = `${mentions}\n⚔️ Pick & ban terminé, place au match ! GL HF`;

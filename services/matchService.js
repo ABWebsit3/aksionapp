@@ -1,7 +1,8 @@
 const { EventEmitter } = require('node:events');
 const { models } = require('../models');
 const { getGame } = require('../config/games');
-const { createVeto, applyAction, currentStep } = require('./veto');
+const PickBan = require('./pickban-core');
+const { poolIds } = require('./catalog');
 
 /**
  * Cycle de vie d'un match :
@@ -101,6 +102,22 @@ function isCaptain(match, userId) {
 	return team !== null && match.teams[team].captainId === userId;
 }
 
+/** Crée l'état de pick & ban adapté au jeu (cartes, draft ou simple choix de côté). */
+function createVetoState(match) {
+	const game = getGame(match.game);
+	const sides = (game.sides || []).map(([name]) => name);
+	if (game.veto === 'maps') return PickBan.createState({ kind: 'maps', seq: match.format, pool: game.maps.map(m => m.id), sides });
+	if (game.veto === 'draft') return PickBan.createState({ kind: 'draft', seq: game.draft, pool: poolIds(game.id), sides: [] });
+	return PickBan.createState({ kind: 'sides', seq: 'sides', pool: [], sides });
+}
+
+/** Pile ou face : le gagnant devient l'équipe A (first pick, côté bleu sur LoL). */
+function coinToss(match) {
+	const swapped = Math.random() < 0.5;
+	if (swapped) match.teams = { A: match.teams.B, B: match.teams.A };
+	match.coinToss = { winner: 'A', swapped };
+}
+
 function checkedInCount(match, key) {
 	return match.teams[key].members.filter(m => match.checkin[m.id]).length;
 }
@@ -114,17 +131,33 @@ function checkIn(id, userId) {
 
 		if (checkedInCount(match, 'A') >= match.size && checkedInCount(match, 'B') >= match.size) {
 			match.status = 'veto';
-			match.veto = createVeto(getGame(match.game), match.format, Math.random() < 0.5 ? 'A' : 'B');
+			coinToss(match);
+			match.veto = { ...createVetoState(match), turnStartedAt: Date.now() };
 		}
 	});
 }
 
-function vetoAction(id, userId, value) {
+/** action : { id } pour un ban/pick, { side } pour un choix de côté. Validée par le moteur partagé. */
+function vetoAction(id, userId, action = {}) {
 	return mutate(id, match => {
 		if (match.status !== 'veto') throw new Error('Le pick & ban n\'est pas en cours');
 		if (!isCaptain(match, userId)) throw new Error('Seul le capitaine peut faire le pick & ban');
-		match.veto = applyAction(match.veto, teamOf(match, userId), value);
-		if (match.veto.done) match.status = 'live';
+		const team = teamOf(match, userId);
+		const next = PickBan.apply(match.veto, { team, id: action.id, side: action.side });
+		match.veto = { ...next, turnStartedAt: Date.now() };
+		if (PickBan.isDone(match.veto)) match.status = 'live';
+	});
+}
+
+/** Annule la dernière action, uniquement par le capitaine qui l'a faite, tant que le veto est en cours. */
+function undoVeto(id, userId) {
+	return mutate(id, match => {
+		if (match.status !== 'veto') throw new Error('Le pick & ban n\'est pas en cours');
+		if (!isCaptain(match, userId)) throw new Error('Seul le capitaine peut annuler');
+		if (PickBan.lastActor(match.veto) !== teamOf(match, userId)) {
+			throw new Error('Tu ne peux annuler que la dernière action de ton équipe');
+		}
+		match.veto = { ...PickBan.undo(match.veto), turnStartedAt: Date.now() };
 	});
 }
 
@@ -183,14 +216,21 @@ function publicView(match, userId) {
 	return {
 		id: match.id,
 		status: match.status,
-		game: { id: game.id, name: game.name },
+		game: { id: game.id, name: game.name, short: game.short, veto: game.veto, noun: game.noun || 'une carte', nounPl: game.nounPl || 'Cartes', sides: game.sides || [], teamMeta: game.teamMeta || null },
 		format: match.format,
 		type: match.type,
 		level: game.levels[match.level] || null,
 		size: match.size,
 		checkinDeadline: match.checkinDeadline,
 		teams,
-		veto: match.veto ? { ...match.veto, current: currentStep(match.veto) } : null,
+		veto: match.veto ? {
+			...match.veto,
+			current: PickBan.currentStep(match.veto),
+			lastActor: PickBan.lastActor(match.veto),
+			turnSeconds: PickBan.TURN_SECONDS,
+		} : null,
+		coinToss: match.coinToss || null,
+		serverNow: Date.now(),
 		result: match.result,
 		cancelReason: match.cancelReason || null,
 		viewer: { userId, team, captain: isCaptain(match, userId), checkedIn: Boolean(match.checkin[userId]) },
@@ -203,6 +243,7 @@ module.exports = {
 	getMatch,
 	checkIn,
 	vetoAction,
+	undoVeto,
 	reportResult,
 	cancelMatch,
 	expireCheckins,

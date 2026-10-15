@@ -51,25 +51,43 @@ test('parcours complet : recherche, check-in, pick & ban, résultat', async () =
 		}
 		assert.strictEqual(view.status, 'veto');
 
-		const notCaptain = await call('a2', '/veto', { value: view.veto.current.options[0] });
+		const captainOf = team => view.teams[team].captainId;
+		const nextAction = v => {
+			const step = v.veto.current;
+			if (step.t === 'side') return { side: v.veto.sides[0] };
+			const used = new Set(v.veto.log.map(e => e.id));
+			return { id: v.veto.pool.find(id => !used.has(id)) };
+		};
+		const winnerKey = view.teams.A.name === 'Alpha' ? 'A' : 'B';
+
+		const notCaptain = await call(view.teams.A.members[1].id, '/veto', nextAction(view));
 		assert.strictEqual(notCaptain.status, 400);
+		const wrongTeam = await call(captainOf('B'), '/veto', nextAction(view));
+		assert.strictEqual(wrongTeam.status, 400);
+
+		// annulation : seul le capitaine qui vient d'agir peut annuler
+		view = (await call(captainOf('A'), '/veto', nextAction(view))).body;
+		assert.strictEqual(view.veto.log.length, 1);
+		assert.strictEqual((await call(captainOf('B'), '/undo', {})).status, 400);
+		view = (await call(captainOf('A'), '/undo', {})).body;
+		assert.strictEqual(view.veto.log.length, 0);
 
 		while (view.status === 'veto') {
-			const step = view.veto.current;
-			const captain = step.team === 'A' ? 'a1' : 'b1';
-			const res = await call(captain, '/veto', { value: step.options[0] });
+			const res = await call(captainOf(view.veto.current.team), '/veto', nextAction(view));
 			assert.strictEqual(res.status, 200, res.body.error);
 			view = res.body;
 		}
 		assert.strictEqual(view.status, 'live');
-		assert.strictEqual(view.veto.maps.length, 1);
+		assert.strictEqual(view.veto.log.filter(e => e.t === 'decider').length, 1);
+		assert.strictEqual(view.veto.log.length, 8);
 
-		await call('a1', '/report', { winner: 'A' });
-		view = (await call('b1', '/report', { winner: 'B' })).body;
+		const loserKey = winnerKey === 'A' ? 'B' : 'A';
+		await call('a1', '/report', { winner: winnerKey });
+		view = (await call('b1', '/report', { winner: loserKey })).body;
 		assert.strictEqual(view.status, 'disputed');
-		view = (await call('b1', '/report', { winner: 'A' })).body;
+		view = (await call('b1', '/report', { winner: winnerKey })).body;
 		assert.strictEqual(view.status, 'finished');
-		assert.strictEqual(view.result.winner, 'A');
+		assert.strictEqual(view.teams[view.result.winner].name, 'Alpha');
 	}
 	finally {
 		server.close();

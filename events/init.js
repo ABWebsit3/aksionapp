@@ -4,6 +4,7 @@ const { startWebServer } = require('../web/server');
 const { registerMatchNotifications } = require('../controller/match');
 const { expireCheckins } = require('../services/matchService');
 const { purgeExpired } = require('../services/matchmaking');
+const { refreshStale } = require('../services/catalog');
 
 module.exports = {
 	name: Events.ClientReady,
@@ -12,6 +13,8 @@ module.exports = {
 		await init();
 		registerMatchNotifications(client);
 		startWebServer();
+		// Listes de champions / héros à jour (Data Dragon, OpenDota), sans bloquer le démarrage
+		refreshStale().catch(console.error);
 		// Nettoyage périodique : check-in expirés et recherches périmées
 		setInterval(() => {
 			expireCheckins().catch(console.error);

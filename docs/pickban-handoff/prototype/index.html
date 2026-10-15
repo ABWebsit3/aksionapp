@@ -1,0 +1,30 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>PraccHub — Pick &amp; Ban</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@500;600;700&amp;family=IBM+Plex+Sans:wght@400;500;600&amp;family=JetBrains+Mono:wght@500;700&amp;display=swap">
+<link rel="stylesheet" href="styles.css">
+</head>
+<body class="motion-normale">
+  <header class="top">
+    <a class="logo" href="#">PRACC<span>HUB</span></a>
+    <nav id="games" class="games" aria-label="Choix du jeu"></nav>
+    <div id="top-right" class="top-right"></div>
+  </header>
+  <main>
+    <section id="turn" class="turn" aria-live="polite"></section>
+    <div id="rail" class="rail" aria-label="Déroulé du veto"></div>
+    <div class="arena">
+      <aside id="team-A" class="team ta"></aside>
+      <section id="center" class="panel center"></section>
+      <aside id="team-B" class="team tb"></aside>
+    </div>
+    <section id="log" class="panel log"></section>
+  </main>
+  <script src="pickban-core.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>

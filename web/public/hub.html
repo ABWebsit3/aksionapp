@@ -2,22 +2,30 @@
 <html lang="fr">
 <head>
 	<meta charset="UTF-8">
-	<meta name="viewport" content="width=device-width, initial-scale=1.0">
-	<title>PraccHub</title>
+	<meta name="viewport" content="width=device-width, initial-scale=1">
+	<title>PraccHub — Pick &amp; Ban</title>
+	<link rel="preconnect" href="https://fonts.googleapis.com">
+	<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@500;600;700&amp;family=IBM+Plex+Sans:wght@400;500;600&amp;family=JetBrains+Mono:wght@500;700&amp;display=swap">
 	<link rel="stylesheet" href="/static/hub.css">
 </head>
-<body>
-	<header class="topbar">
-		<div class="brand">PRACC<span>HUB</span></div>
-		<div id="meta" class="meta"></div>
+<body class="motion-normale">
+	<header class="top">
+		<span class="logo">PRACC<span>HUB</span></span>
+		<div id="games" class="games" aria-label="Jeu du match"></div>
+		<div id="top-right" class="top-right"></div>
 	</header>
 	<main>
-		<div id="error" class="error" hidden></div>
-		<section id="versus" class="versus"></section>
-		<section id="stage" class="stage"></section>
-		<section id="maps" class="maps"></section>
-		<section id="history" class="history"></section>
+		<div id="error" class="alert" role="alert" hidden></div>
+		<section id="turn" class="turn" aria-live="polite"></section>
+		<div id="rail" class="rail" aria-label="Déroulé du veto"></div>
+		<div class="arena">
+			<aside id="team-A" class="team ta"></aside>
+			<section id="center" class="panel center"></section>
+			<aside id="team-B" class="team tb"></aside>
+		</div>
+		<section id="log" class="panel log"></section>
 	</main>
+	<script src="/static/pickban-core.js"></script>
 	<script src="/static/hub.js"></script>
 </body>
 </html>
